@@ -1,15 +1,20 @@
 from fastapi import FastAPI
+from pydantic import BaseModel, Field
+from typing import List,Optional
 
 app = FastAPI()
 
-@app.get("/")
-def home():
-    return {"message":"API is working"}
-@app.post("/ingest")
-async def ingest_logs(payload:dict):
-    logs = payload.get("logs",[])
-    return{
-        "status":"received",
-        "count":len(logs),
-        "logs":logs 
-    }
+class Log(BaseModel):
+    timestamp:Optional[str]=None
+    level:str="INFO"
+    service:str="unknown"
+    message:str
+    trace_id:Optional[str]=None
+    metadata:Optional[dict]= Field(default_factory=dict)
+
+class LogRequest(BaseModel):
+    logs:List[Log]
+
+@app.post("/test")
+async def test_schema(payload:LogRequest):
+    return payload
