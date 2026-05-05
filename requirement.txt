@@ -1,4 +1,7 @@
-redis rq
+redis 
+rq
 fastapi
 pydnatic
 uuid
+
+

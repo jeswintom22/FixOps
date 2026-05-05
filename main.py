@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import List,Optional
 import uuid
 from datetime import datetime
+from queue_config import log_queue
 
 app = FastAPI()
 logs_db =[]
@@ -40,10 +41,10 @@ def get_logs():
 
 @app.post("/ingest")                               #real ingestion endpoint
 async def ingest_logs(payload: LogRequest):
-    processed = ingestion_service(payload.logs)
+    for log in payload.logs:
+        log_queue.enqueue("worker_tasks.process_log",log.dict())
 
     return {
-        "status":"ingested",
-        "count":len(processed),
-        "logs":processed
+        "status":"queued",
+        "count":len(payload.logs)
     }
