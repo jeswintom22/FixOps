@@ -1,4 +1,4 @@
-from services.normalizer import normalize_log
+from services.normalizer import normalize_log                       #orchestration only
 
 from services.detectors.rule_detector import(
     rule_detector

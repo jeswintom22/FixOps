@@ -1,24 +1,29 @@
-def aggregate_detection(*results) -> dict:
+def aggregate_detection(*results) -> dict:              # combines detector outputs
     total_score = 0
-    triggered = False
+    triggered_detectors = []
     all_flags=[]
 
     for result in results:
-        total_score+=result["score"]
-
-        if result["triggered"]:
-            triggered= True
+        total_score += result["score"]
         all_flags.extend(result["flags"])
-    average_score = total_score/len(results)
+        if result["triggered"]:
+            triggered_detectors.append(
+                result["detector"]
+            )
+       
+    average_score = (
+        total_score/len(results)
+    )
+    average_score=round(average_score,2)
     return{
-        "event_type": "anomaly" if triggered else "normal",
-        "anomaly_score": round(average_score, 2),
+        "event_type":( 
+            "anomaly" 
+            if average_score>=0.3
+            else "normal"
+        ),
+        "anomaly_score": average_score,
         "detection_metadata": {
             "flags": all_flags,
-            "detectors_triggered": [
-                r["detector"]
-                for r in results
-                if r["triggered"]
-            ]
+            "detectors_triggered": triggered_detectors
         }
     }

@@ -7,7 +7,7 @@ def normalize_log(log: dict) -> dict:
         or datetime.utcnow().isoformat()
     )
     log["level"]=(
-        log.get(("level","INFO").upper())
+        log.get("level","INFO").upper()
     )
     log["service"]=(
         log.get("service","unknown-service")
