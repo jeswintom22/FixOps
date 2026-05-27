@@ -12,6 +12,7 @@ from services.detectors.aggregator import(
     aggregate_detection
 )
 
+
 from database import save_log
 
 
