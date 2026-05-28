@@ -12,6 +12,10 @@ from services.detectors.aggregator import(
     aggregate_detection
 )
 
+from services.detectors.utils import(
+    update_counters
+)
+
 from database import save_log
 
 
@@ -32,6 +36,8 @@ def process_log(log:dict):
     )
 
     normalized_log.update(final_detection)
+
+    update_counters(normalized_log)
 
     save_log(normalized_log)
     
