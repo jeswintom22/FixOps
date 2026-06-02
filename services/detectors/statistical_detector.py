@@ -4,4 +4,4 @@ def statistical_detector(log:dict) -> dict:
         "triggered":False,
         "score":0.0,
         "flags":[]
-    }   
+    }
