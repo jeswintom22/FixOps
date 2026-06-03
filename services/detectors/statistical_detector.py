@@ -33,9 +33,6 @@ def statistical_detector(log: dict):
 
         ratio = anomalies / requests
 
-        print("Requests:", requests)
-        print("Anomalies:", anomalies)
-        print("Ratio:", ratio)
 
         if ratio > 0.3:
 
@@ -45,8 +42,7 @@ def statistical_detector(log: dict):
             flags.append(
                 "HIGH_ANOMALY_RATIO"
             )
-
-    print("Statistical Flags:", flags)
+            
 
     return {
         "detector": "statistical_detector",
