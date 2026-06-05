@@ -18,14 +18,18 @@ from services.detectors.utils import(
 
 from database import save_log
 
+from queue_config import analysis_queue
+
+from services.ai.analysis_worker import (
+    analyze_incident
+)
 
 
 
+def process_log(log: dict):
 
-def process_log(log:dict):           
-    
-    normalized_log=normalize_log(log)
-    
+    normalized_log = normalize_log(log)
+
     rule_result = rule_detector(normalized_log)
 
     statistical_result = statistical_detector(normalized_log)
@@ -40,6 +44,12 @@ def process_log(log:dict):
     update_counters(normalized_log)
 
     save_log(normalized_log)
-    
-    return normalized_log
 
+    # Week 3 Step 2
+    if normalized_log["event_type"] == "anomaly":
+        analysis_queue.enqueue(
+            analyze_incident,
+            normalized_log
+        )
+
+    return normalized_log
