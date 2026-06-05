@@ -21,7 +21,7 @@ from database import save_log
 from queue_config import analysis_queue
 
 from services.ai.analysis_worker import (
-    analyze_incident
+    process_analysis
 )
 
 
@@ -48,7 +48,7 @@ def process_log(log: dict):
     # Week 3 Step 2
     if normalized_log["event_type"] == "anomaly":
         analysis_queue.enqueue(
-            analyze_incident,
+            process_analysis,
             normalized_log
         )
 

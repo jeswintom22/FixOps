@@ -5,6 +5,7 @@ class OpenAIProvider(LLMProvider):
 
     def analyze(self, prompt: str):
         return {
-            "provider": "openai",
-            "response": "placeholder"
+            "root_cause": "Placeholder root cause",
+            "severity": "HIGH",
+            "suggested_fix": "Placeholder fix"
         }
