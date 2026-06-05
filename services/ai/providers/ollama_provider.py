@@ -1,11 +1,30 @@
+from ollama import chat
 from .base import LLMProvider
+import json
+import os
 
 
 class OllamaProvider(LLMProvider):
 
     def analyze(self, prompt: str):
-        return {
-            "root_cause": "Placeholder root cause",
-            "severity": "HIGH",
-            "suggested_fix": "Placeholder fix"
-        }
+
+        model = os.getenv(
+            "OLLAMA_MODEL",
+            "qwen3:8b"
+        )
+
+        response = chat(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
+
+        text = response["message"]["content"]
+
+        print(text)  # temporary debugging
+
+        return json.loads(text)

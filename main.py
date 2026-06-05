@@ -7,6 +7,10 @@ from queue_config import log_queue
 from database import cursor
 import json
 from worker_tasks import process_log
+from database import (
+    get_analysis,
+    get_analysis_by_trace_id
+)
 
 app = FastAPI()
 
@@ -70,3 +74,13 @@ async def ingest_logs(payload: LogRequest):
         "status":"queued",
         "count":len(payload.logs)
     }
+
+@app.get("/analysis")
+def read_analysis():
+
+    return get_analysis()
+
+@app.get("/analysis/{trace_id}")
+def read_analysis_by_trace_id(trace_id: str):
+
+    return get_analysis_by_trace_id(trace_id)

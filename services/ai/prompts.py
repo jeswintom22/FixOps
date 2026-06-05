@@ -16,6 +16,11 @@ Anomaly Score:
 
 Detection Flags:
 {log.get("detection_metadata", {}).get("flags", [])}
+Return ONLY valid JSON.
+
+Do not include markdown.
+Do not include explanations.
+Do not wrap JSON in code blocks.
 
 Provide your response strictly in JSON format:
 
