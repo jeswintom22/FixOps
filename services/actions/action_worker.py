@@ -1,15 +1,12 @@
 from services.actions.decision_engine import decide_action
+from services.actions.alert_service import send_alert
 
 
 def process_action(analysis):
-    print("Processing action")
 
     decision = decide_action(analysis)
 
-    print("Analysis:")
-    print(analysis)
-
-    print("Decision:")
-    print(decision)
+    if decision["action_type"] == "alert":
+        send_alert(analysis, decision)
 
     return decision
