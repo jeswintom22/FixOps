@@ -1,3 +1,15 @@
-def process_action(action_data):
+from services.actions.decision_engine import decide_action
+
+
+def process_action(analysis):
     print("Processing action")
-    print(action_data)
+
+    decision = decide_action(analysis)
+
+    print("Analysis:")
+    print(analysis)
+
+    print("Decision:")
+    print(decision)
+
+    return decision
