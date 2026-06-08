@@ -18,7 +18,11 @@ from services.detectors.utils import(
 
 from database import save_log
 
-from queue_config import analysis_queue
+from queue_config import (
+    log_queue,
+    analysis_queue,
+    action_queue
+)
 
 from services.ai.analysis_worker import (
     process_analysis

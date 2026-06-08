@@ -17,3 +17,8 @@ analysis_queue = Queue(
     "analysis",
     connection=redis_conn
 )
+
+action_queue = Queue(
+    "actions",
+    connection=redis_conn
+)
