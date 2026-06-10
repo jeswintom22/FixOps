@@ -1,11 +1,15 @@
-def send_alert(analysis, decision):
-    print("\n========== ALERT ==========")
+from services.actions.formatter import (
+    build_alert_message
+)
 
-    print(f"Severity : {analysis.get('severity')}")
-    print(f"Root Cause : {analysis.get('root_cause')}")
-    print(f"Suggested Fix : {analysis.get('suggested_fix')}")
 
-    print("\nDecision:")
-    print(decision)
+def send_alert(
+    analysis,
+    decision
+):
+    message = build_alert_message(
+        analysis,
+        decision
+    )
 
-    print("========== END ALERT ==========\n")
+    print(message)
