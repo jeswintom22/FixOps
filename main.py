@@ -8,8 +8,11 @@ from database import cursor
 import json
 from worker_tasks import process_log
 from database import (
+    save_log,
     get_analysis,
-    get_analysis_by_trace_id
+    get_analysis_by_trace_id,
+    get_actions,
+    get_actions_by_trace_id
 )
 
 app = FastAPI()
@@ -84,3 +87,11 @@ def read_analysis():
 def read_analysis_by_trace_id(trace_id: str):
 
     return get_analysis_by_trace_id(trace_id)
+
+@app.get("/actions")
+def fetch_actions():
+    return get_actions()
+
+@app.get("/actions/{trace_id}")
+def fetch_actions_by_trace_id(trace_id: str):
+    return get_actions_by_trace_id(trace_id)
