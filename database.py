@@ -6,7 +6,7 @@ conn = sqlite3.connect("logs.db", check_same_thread=False)
 
 cursor = conn.cursor()
 
-# Existing logs table
+# Logs table
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS logs(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS logs(
 )
 """)
 
-# NEW: Week 3 analysis table
+# AI Analysis table
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS analysis_results(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,6 +31,19 @@ CREATE TABLE IF NOT EXISTS analysis_results(
     severity TEXT,
     root_cause TEXT,
     suggested_fix TEXT,
+    created_at TEXT
+)
+""")
+
+# Week 4 Action History table
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS action_history(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trace_id TEXT,
+    service TEXT,
+    severity TEXT,
+    action_type TEXT,
+    status TEXT,
     created_at TEXT
 )
 """)
@@ -66,7 +79,6 @@ def save_log(log):
     conn.commit()
 
 
-# NEW: Save AI analysis
 def save_analysis(
     trace_id,
     service,
@@ -100,7 +112,6 @@ def save_analysis(
     conn.commit()
 
 
-# NEW: Get all analysis results
 def get_analysis():
     cursor.execute("""
         SELECT *
@@ -108,12 +119,9 @@ def get_analysis():
         ORDER BY id DESC
     """)
 
-    rows = cursor.fetchall()
-
-    return rows
+    return cursor.fetchall()
 
 
-# NEW: Get analysis by trace_id
 def get_analysis_by_trace_id(trace_id):
     cursor.execute("""
         SELECT *
@@ -122,6 +130,57 @@ def get_analysis_by_trace_id(trace_id):
         ORDER BY id DESC
     """, (trace_id,))
 
-    rows = cursor.fetchall()
+    return cursor.fetchall()
 
-    return rows
+
+# Week 4 Action History Functions
+
+def save_action(
+    trace_id,
+    service,
+    severity,
+    action_type,
+    status="completed"
+):
+    cursor.execute("""
+        INSERT INTO action_history(
+            trace_id,
+            service,
+            severity,
+            action_type,
+            status,
+            created_at
+        )
+        VALUES(?,?,?,?,?,?)
+    """,
+    (
+        trace_id,
+        service,
+        severity,
+        action_type,
+        status,
+        datetime.utcnow().isoformat()
+    ))
+
+    conn.commit()
+
+
+def get_actions():
+    cursor.execute("""
+        SELECT *
+        FROM action_history
+        ORDER BY id DESC
+    """)
+
+    return cursor.fetchall()
+
+
+def get_actions_by_trace_id(trace_id):
+    cursor.execute("""
+        SELECT *
+        FROM action_history
+        WHERE trace_id = ?
+        ORDER BY id DESC
+    """, (trace_id,))
+
+    return cursor.fetchall()
