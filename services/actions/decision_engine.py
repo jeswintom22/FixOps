@@ -16,13 +16,15 @@ def decide_action(analysis):
     if severity == "HIGH":
         return {
             "action_type": "alert",
-            "priority": "high"
+            "priority": "high",
+            "webhook": True
         }
 
     if severity == "CRITICAL":
         return {
             "action_type": "auto_remediation",
-            "priority": "critical"
+            "priority": "critical",
+            "webhook":True
         }
 
     return {
