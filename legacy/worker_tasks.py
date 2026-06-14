@@ -16,9 +16,9 @@ from services.detectors.utils import(
     update_counters
 )
 
-from database import save_log
+from legacy.database import save_log
 
-from queue_config import (
+from legacy.queue_config import (
     log_queue,
     analysis_queue,
     action_queue

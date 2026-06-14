@@ -1,6 +1,6 @@
 from services.actions.decision_engine import decide_action
 from services.actions.alert_service import send_alert
-from database import save_action
+from legacy.database import save_action
 from services.actions.safe_actions import (
     restart_service,
     clear_cache

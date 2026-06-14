@@ -1,5 +1,5 @@
 from services.ai.llm_service import analyze_incident
-from database import save_analysis
+from legacy.database import save_analysis
 
 
 def process_analysis(log):
