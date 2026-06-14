@@ -1,65 +1,144 @@
 # FixOps IQ
 
-FixOps IQ is an incident investigation backend for SRE and operations workflows. It accepts incident submissions, runs a multi-step investigation pipeline, retrieves supporting operational knowledge, and produces a structured report for root cause analysis and remediation planning.
+> **Microsoft Agents League 2026 — Reasoning Agents track**
 
-The active production path in this repository is the FastAPI backend in `main.py` and `app/`, plus the Streamlit client in `ui/`. The root-level Redis/RQ prototype is still present for reference, but it is legacy code and not the primary runtime path.
+FixOps IQ is an AI-powered SRE reasoning agent that investigates incidents end-to-end. Submit an error log, get back a structured root cause analysis, supporting evidence, and a ranked remediation plan — automatically.
+
+---
+
+## Microsoft IQ Integration — Foundry IQ
+
+FixOps IQ integrates **Azure AI Foundry** (Foundry IQ) for semantic knowledge retrieval.
+
+| Component | Provider |
+|---|---|
+| Semantic embeddings | Azure AI Foundry — `text-embedding-3-large` |
+| Structured reasoning | Ollama (local) or Azure OpenAI |
+| Evaluation / demo mode | `AI_PROVIDER=mock` — zero credentials needed |
+
+The knowledge retrieval step embeds incident signals using `text-embedding-3-large` via the Azure AI Foundry endpoint, then performs cosine similarity search across runbooks, playbooks, and postmortems stored in PostgreSQL with `pgvector`. This is the core intelligence layer that grounds the agent's root cause reasoning in real operational knowledge.
+
+---
+
+## What it does
+
+```
+Incident submitted
+       ↓
+Log Analysis          — extracts error type, affected service, anomaly signals
+       ↓
+Knowledge Retrieval   — Azure AI Foundry embeddings search runbooks + postmortems
+       ↓
+Root Cause Analysis   — LLM reasoning with confidence score; retries with expanded context if < 0.75
+       ↓
+Remediation Planning  — ranked steps with kubectl commands; retries if fewer than 2 steps generated
+       ↓
+Report Generation     — structured report with executive summary, evidence, timeline
+```
+
+The agent makes real decisions at runtime:
+- Severity HIGH/CRITICAL → fetches `top_k=8` knowledge chunks instead of 3
+- Confidence score below threshold → automatically retries root cause with expanded context
+- Thin remediation plan → automatically retries planning step
+
+---
+
+## Demo
+
+The full demo runs in mock mode — no API keys or database needed.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirement.txt
+
+$env:AI_PROVIDER="mock"
+python scripts/demo_run.py
+```
+
+To run the full UI demo:
+
+```powershell
+# Terminal 1 — backend
+$env:AI_PROVIDER="mock"
+python -m uvicorn main:app --reload
+
+# Terminal 2 — Streamlit UI
+$env:AI_PROVIDER="mock"
+$env:FIXOPS_API_URL="http://127.0.0.1:8000"
+streamlit run ui/app.py
+```
+
+Open `http://localhost:8501` and submit this incident to see the full pipeline:
+
+**Title:** `Payments checkout spike causing transaction timeouts`
+
+**Raw Log:**
+```
+2026-06-11T09:14:03Z INFO payments-api checkout latency p95 crossed 4200ms region=ap-south-1
+2026-06-11T09:16:18Z ERROR payments-api com.zaxxer.hikari.pool.HikariPool Connection is not available, request timed out after 30000ms
+2026-06-11T09:16:21Z ERROR payments-api org.postgresql.util.PSQLException FATAL: sorry, too many clients already SQLSTATE 53300
+2026-06-11T09:18:07Z WARN payments-api retry storm detected for authorize-payment requests trace=8d0c1
+2026-06-11T09:20:11Z WARN payments-api readiness probe failed while inflight requests remained above threshold
+```
+
+**Severity:** `HIGH`
+
+---
 
 ## Architecture
 
 ### Active backend
 
-- `main.py`: FastAPI entrypoint, API routes, lifecycle, health check, and exception handling
-- `app/config.py`: environment-driven settings with validation
-- `app/db/`: async SQLAlchemy engine and session management
-- `app/models/`: PostgreSQL ORM models for incidents, investigations, reports, and knowledge chunks
-- `app/services/`: service layer for incidents, investigations, reports, provider-agnostic AI services, and knowledge retrieval
-- `app/agent/`: multi-step orchestration for log analysis, knowledge retrieval, root cause analysis, remediation planning, and report generation
-- `ui/`: Streamlit client that drives the API workflow
+- `main.py` — FastAPI entrypoint, routes, lifecycle, exception handling
+- `app/config.py` — environment-driven settings with split LLM/embedding provider support
+- `app/agent/orchestrator.py` — multi-step agent with confidence-gated retry logic
+- `app/agent/steps/` — five typed pipeline steps (log analysis → knowledge retrieval → root cause → remediation → report)
+- `app/services/ai.py` — provider-agnostic LLM and embedding interfaces (Azure OpenAI, Azure Foundry, Ollama, Mock)
+- `app/services/db_knowledge_service.py` — pgvector cosine similarity search via Azure AI Foundry embeddings
+- `app/db/` — async SQLAlchemy engine and session management
+- `app/models/` — PostgreSQL ORM models for incidents, investigations, reports, knowledge chunks
+- `ui/` — Streamlit client
 
-### Legacy prototype
+### Knowledge base
 
-- `database.py`, `queue_config.py`, `worker_tasks.py`, `services/`, and `state/` represent an earlier SQLite and Redis/RQ prototype
-- They are not used by the active FastAPI investigation flow, but they remain in the repository and still compile
+`knowledge_base/` contains runbooks, playbooks, and postmortems in markdown. The `scripts/ingest_knowledge.py` script chunks and embeds them into PostgreSQL via Azure AI Foundry. The agent retrieves the most relevant chunks at investigation time using vector similarity.
 
-## Features
+### Folder structure
 
-- Incident creation and validation
-- Investigation orchestration with typed step outputs
-- Configurable chat and embedding providers via DI
-- Mock AI and knowledge services for deterministic local demos
-- PostgreSQL persistence with `pgvector`
-- Structured JSON logging
-- Health endpoint at `GET /healthz`
-- Streamlit UI for manual end-to-end workflows
-
-## Folder Structure
-
-```text
+```
 FixOps/
-|-- app/
-|   |-- agent/
-|   |-- api/
-|   |-- core/
-|   |-- db/
-|   |-- models/
-|   |-- schemas/
-|   `-- services/
-|-- docs/
-|-- knowledge_base/
-|-- scripts/
-|-- ui/
-|-- main.py
-|-- requirement.txt
-`-- RUNNING.md
+├── app/
+│   ├── agent/          — orchestrator + 5 pipeline steps
+│   ├── api/            — FastAPI dependency injection
+│   ├── core/           — constants, logging
+│   ├── db/             — async SQLAlchemy session
+│   ├── models/         — ORM models
+│   ├── schemas/        — Pydantic request/response schemas
+│   └── services/       — AI providers, knowledge service, incident/report services
+├── knowledge_base/
+│   ├── runbooks/
+│   ├── playbooks/
+│   └── postmortems/
+├── scripts/
+│   ├── demo_run.py     — offline demo, no credentials needed
+│   └── ingest_knowledge.py
+├── ui/                 — Streamlit client
+├── legacy/             — earlier Redis/RQ + SQLite prototype (not used)
+├── main.py
+└── requirement.txt
 ```
 
-## Local Setup
+---
+
+## Full setup (with real providers)
 
 ### Prerequisites
 
 - Python 3.10+
-- PostgreSQL 15+ with `pgvector`
-- AI provider credentials for the active backend
+- PostgreSQL 15+ with `pgvector` (or use the Docker command below)
+- Ollama installed with `qwen3:8b` pulled
+- Azure AI Foundry endpoint with `text-embedding-3-large` deployed
 
 ### Install
 
@@ -69,38 +148,7 @@ python -m venv .venv
 pip install -r requirement.txt
 ```
 
-## Environment Setup
-
-Create a `.env` file from `.env.example` and fill in the required values.
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Required variables for the active backend:
-
-- `DATABASE_URL`
-- `DB_ECHO`
-- `APP_ENV`
-- `LOG_LEVEL`
-- `AI_PROVIDER`
-- `ENDPOINT`
-- `API_KEY`
-- `API_VERSION`
-- `CHAT_MODEL` or `CHAT_DEPLOYMENT`
-- `EMBEDDING_MODEL` or `EMBEDDING_DEPLOYMENT`
-
-Optional variable for the Streamlit UI:
-
-- `FIXOPS_API_URL`
-
-## Database Setup
-
-### PostgreSQL
-
-The app expects PostgreSQL with the `vector` extension available.
-
-Example local database:
+### PostgreSQL with pgvector
 
 ```powershell
 docker run --name fixops-postgres `
@@ -108,95 +156,98 @@ docker run --name fixops-postgres `
   -e POSTGRES_PASSWORD=pass `
   -e POSTGRES_DB=fixops_iq `
   -p 5432:5432 `
-  -d postgres:15
+  -d pgvector/pgvector:pg15
 ```
 
-Install `pgvector` in that database before starting the backend. On startup, the app will run `CREATE EXTENSION IF NOT EXISTS vector` and create tables from the ORM metadata.
-
-## Running Backend
+### Ollama
 
 ```powershell
+ollama pull qwen3:8b
+```
+
+### Environment
+
+Create `.env` from `.env.example`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Hybrid setup (Ollama for LLM, Azure AI Foundry for embeddings):
+
+```env
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fixops_iq
+DB_ECHO=false
+APP_ENV=development
+LOG_LEVEL=INFO
+
+LLM_PROVIDER=ollama
+CHAT_MODEL=qwen3:8b
+CHAT_DEPLOYMENT=qwen3:8b
+OLLAMA_MODEL=qwen3:8b
+
+EMBEDDING_PROVIDER=azure_openai
+ENDPOINT=https://<your-resource>.openai.azure.com
+API_KEY=<your-key>
+API_VERSION=2024-02-01
+EMBEDDING_MODEL=text-embedding-3-large
+EMBEDDING_DEPLOYMENT=text-embedding-3-large
+
+FIXOPS_API_URL=http://127.0.0.1:8000
+```
+
+Mock setup (no credentials):
+
+```env
+AI_PROVIDER=mock
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fixops_iq
+```
+
+### Ingest knowledge base
+
+```powershell
+python scripts/ingest_knowledge.py
+```
+
+### Run
+
+```powershell
+# Backend
 python -m uvicorn main:app --reload
-```
 
-Useful endpoints:
-
-- API docs: `http://127.0.0.1:8000/docs`
-- Health: `http://127.0.0.1:8000/healthz`
-
-## Running Frontend
-
-Set the API base URL and start Streamlit:
-
-```powershell
+# Frontend (separate terminal)
 $env:FIXOPS_API_URL="http://127.0.0.1:8000"
 streamlit run ui/app.py
 ```
 
-## API Endpoints
+---
 
-- `POST /incidents`
-  Creates an incident record.
-- `POST /investigate`
-  Starts an investigation for an incident unless one is already active.
-- `GET /reports/{id}`
-  Fetches the final structured report for an investigation.
-- `GET /healthz`
-  Executes a database health check.
+## API
 
-### Example workflow
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/incidents` | Create an incident record |
+| `POST` | `/investigate` | Run the full agent pipeline for an incident |
+| `GET` | `/reports/{id}` | Fetch the structured investigation report |
+| `GET` | `/healthz` | Database health check |
 
-Create an incident:
+API docs available at `http://127.0.0.1:8000/docs` when running.
 
-```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/incidents" `
-  -Method Post `
-  -ContentType "application/json" `
-  -Body '{"title":"Payments timeout","description":"Checkout failures observed","raw_log":"2026-06-12T14:22:11Z ERROR payments-api request timed out","severity":"HIGH"}'
-```
+---
 
-Start an investigation:
+## Agentic reasoning features
 
-```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/investigate" `
-  -Method Post `
-  -ContentType "application/json" `
-  -Body '{"incident_id":"<incident_id>"}'
-```
+- **Confidence-gated retry** — if root cause confidence score is below 0.75, the agent re-runs knowledge retrieval with expanded context and retries root cause analysis
+- **Severity-adaptive retrieval** — HIGH/CRITICAL incidents fetch 8 knowledge chunks; MEDIUM/LOW fetch 3
+- **Remediation retry** — if fewer than 2 remediation steps are generated, the planning step runs again automatically
+- **Typed step outputs** — each pipeline step produces a typed dataclass result; the orchestrator passes structured state between steps
+- **Mock mode** — fully deterministic pipeline with no external dependencies, suitable for evaluation and CI
 
-Fetch the report:
+---
 
-```powershell
-Invoke-RestMethod "http://127.0.0.1:8000/reports/<report_id>"
-```
+## Observability
 
-## Demo Workflow
-
-For a deterministic end-to-end run without a live database or external AI dependency:
-
-```powershell
-.\.venv\Scripts\python scripts\demo_run.py
-```
-
-This uses `MockAIService` and `MockKnowledgeService` to exercise the agent pipeline locally.
-
-## Observability Notes
-
-- Application logs are emitted as JSON to stdout
+- All logs emitted as structured JSON to stdout
 - `GET /healthz` verifies database reachability
-- Unexpected application exceptions are logged server-side and return sanitized `500` responses
-
-Recommended next production steps:
-
-- Send JSON logs to a central sink such as Datadog, ELK, or Azure Monitor
-- Add request IDs and distributed tracing
-- Add metrics for investigation latency, failure rate, and external AI call duration
-- Add Alembic migrations before deploying to shared environments
-
-## Future Roadmap
-
-- Replace ORM `create_all` with managed migrations
-- Persist per-step investigation audit records instead of in-memory state only
-- Add authenticated API access and rate limiting
-- Move long-running investigations to background workers instead of request/response execution
-- Replace the mock knowledge service with database-backed retrieval
+- Unhandled exceptions are logged server-side and return sanitized 500 responses
+- Investigation status tracked per step in PostgreSQL (`QUEUED → RUNNING → COMPLETED / FAILED`)

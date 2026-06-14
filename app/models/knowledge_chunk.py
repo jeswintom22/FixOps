@@ -36,4 +36,4 @@ class KnowledgeChunk(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         server_default=text("'[]'::jsonb"),
         nullable=False,
     )
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(1536))
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(3072))
