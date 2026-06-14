@@ -1,97 +1,199 @@
-from fastapi import FastAPI
-from pydantic import BaseModel, Field
-from typing import List,Optional
-import uuid
-from datetime import datetime
-from queue_config import log_queue
-from database import cursor
-import json
-from worker_tasks import process_log
-from database import (
-    save_log,
-    get_analysis,
-    get_analysis_by_trace_id,
-    get_actions,
-    get_actions_by_trace_id
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+from uuid import UUID
+
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.agent.orchestrator import AgentOrchestrator
+from app.api.deps import (
+    get_agent_orchestrator,
+    get_incident_service,
+    get_investigation_service,
+    get_report_service,
+    get_session,
+)
+from app.config import get_settings
+from app.core.constants import IncidentStatus
+from app.core.logging import configure_logging
+from app.db.session import close_db, init_db
+from app.models.incident import Incident
+from app.models.report import Report
+from app.schemas import (
+    IncidentCreate,
+    IncidentRead,
+    InvestigationRead,
+    InvestigationRunRequest,
+    InvestigationRunResponse,
+    ReportRead,
+)
+from app.services.incident_service import IncidentService
+from app.services.investigation_service import InvestigationService
+from app.services.report_service import ReportService
+
+logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    configure_logging(get_settings().log_level)
+    await init_db()
+    try:
+        yield
+    finally:
+        await close_db()
+
+
+app = FastAPI(
+    title="FixOps IQ API",
+    version="0.4.0",
+    lifespan=lifespan,
 )
 
-app = FastAPI()
 
-def ingestion_service(logs):   #ingestion service(logic layer)
-    processed_logs=[]
+def error_response(
+    *,
+    status_code: int,
+    code: str,
+    message: str,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "error": {
+                "code": code,
+                "message": message,
+            }
+        },
+    )
 
-    for log in logs:
-        log_dict=log.dict()
-        if not log_dict.get("trace_id"):      #attach trace_id
-            log_dict["trace_id"]=str(uuid.uuid4())
-        
-        if not log_dict.get("timestamp"):    #normalize timestamp
-            log_dict["timestamp"]=datetime.utcnow().isoformat()
-        processed_logs.append(log_dict)
-    
-    return processed_logs
-class Log(BaseModel):
-    timestamp:Optional[str]=None
-    level:str="INFO"
-    service:str="unknown"
-    message:str
-    trace_id:Optional[str]=None
-    metadata:Optional[dict]= Field(default_factory=dict)
 
-class LogRequest(BaseModel):
-    logs:List[Log]
+@app.exception_handler(RequestValidationError)
+async def handle_validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    return error_response(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        code="validation_error",
+        message=str(exc),
+    )
 
-@app.get("/logs")
-def get_logs():
 
-    cursor.execute("SELECT * FROM logs")
+@app.exception_handler(Exception)
+async def handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled application error")
+    return error_response(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        code="internal_error",
+        message="An unexpected internal error occurred.",
+    )
 
-    rows = cursor.fetchall()
 
-    logs = []
+@app.post(
+    "/incidents",
+    response_model=IncidentRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_incident(
+    payload: IncidentCreate,
+    incident_service: IncidentService = Depends(get_incident_service),
+) -> Incident:
+    return await incident_service.create(payload.model_dump(by_alias=False))
 
-    for row in rows:
-        logs.append({
-            "id": row[0],
-            "timestamp": row[1],
-            "level": row[2],
-            "service": row[3],
-            "message": row[4],
-            "trace_id": row[5],
-            "metadata": json.loads(row[6]),
-            "event_type": row[7],
-            "anomaly_score": row[8]
-        })
 
-    return {
-        "total": len(logs),
-        "logs": logs
-    }
+@app.post(
+    "/investigate",
+    response_model=InvestigationRunResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def investigate_incident(
+    payload: InvestigationRunRequest,
+    incident_service: IncidentService = Depends(get_incident_service),
+    investigation_service: InvestigationService = Depends(get_investigation_service),
+    report_service: ReportService = Depends(get_report_service),
+    orchestrator: AgentOrchestrator = Depends(get_agent_orchestrator),
+) -> InvestigationRunResponse:
+    incident = await incident_service.get_by_id(payload.incident_id)
+    if incident is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Incident {payload.incident_id} was not found.",
+        )
+    active_investigation = await investigation_service.get_active_by_incident_id(payload.incident_id)
+    if active_investigation is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Incident {payload.incident_id} already has an active investigation "
+                f"({active_investigation.id})."
+            ),
+        )
 
-@app.post("/ingest")                               #real ingestion endpoint
-async def ingest_logs(payload: LogRequest):
-    for log in payload.logs:
-        log_queue.enqueue(process_log,log.dict())
+    await incident_service.update_status(
+        incident_id=payload.incident_id,
+        status=IncidentStatus.INVESTIGATING,
+    )
+    investigation = await investigation_service.create({"incident_id": payload.incident_id})
 
-    return {
-        "status":"queued",
-        "count":len(payload.logs)
-    }
+    try:
+        await orchestrator.run(investigation.id)
+    except LookupError as exc:
+        await incident_service.update_status(
+            incident_id=payload.incident_id,
+            status=IncidentStatus.OPEN,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        await incident_service.update_status(
+            incident_id=payload.incident_id,
+            status=IncidentStatus.OPEN,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except Exception:
+        await incident_service.update_status(
+            incident_id=payload.incident_id,
+            status=IncidentStatus.OPEN,
+        )
+        raise
 
-@app.get("/analysis")
-def read_analysis():
+    refreshed = await investigation_service.get_by_id(investigation.id)
+    report = await report_service.get_by_investigation(investigation.id)
+    if refreshed is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Investigation was created but could not be reloaded.",
+        )
 
-    return get_analysis()
+    return InvestigationRunResponse(
+        investigation=refreshed,
+        report_id=report.id if report is not None else None,
+    )
 
-@app.get("/analysis/{trace_id}")
-def read_analysis_by_trace_id(trace_id: str):
 
-    return get_analysis_by_trace_id(trace_id)
+@app.get("/healthz", status_code=status.HTTP_200_OK)
+async def healthcheck(session: AsyncSession = Depends(get_session)) -> dict[str, str]:
+    await session.execute(text("SELECT 1"))
+    return {"status": "ok"}
 
-@app.get("/actions")
-def fetch_actions():
-    return get_actions()
 
-@app.get("/actions/{trace_id}")
-def fetch_actions_by_trace_id(trace_id: str):
-    return get_actions_by_trace_id(trace_id)
+@app.get("/reports/{id}", response_model=ReportRead)
+async def get_report(
+    id: UUID,
+    report_service: ReportService = Depends(get_report_service),
+) -> Report:
+    report = await report_service.get_by_id(id)
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report {id} was not found.",
+        )
+    return report

@@ -1,181 +1,201 @@
-# FixOps
+# FixOps IQ
 
-FixOps is a small DevOps incident-detection prototype. It accepts logs through a
-FastAPI API, processes them with Redis/RQ workers, detects anomalies, and can use
-either Ollama or the OpenAI API to generate incident analysis.
+FixOps IQ is an incident investigation backend for SRE and operations workflows. It accepts incident submissions, runs a multi-step investigation pipeline, retrieves supporting operational knowledge, and produces a structured report for root cause analysis and remediation planning.
 
-It stores local data in SQLite (`logs.db`).
+The active production path in this repository is the FastAPI backend in `main.py` and `app/`, plus the Streamlit client in `ui/`. The root-level Redis/RQ prototype is still present for reference, but it is legacy code and not the primary runtime path.
 
-## What It Does
+## Architecture
 
-- Ingests application logs with `POST /ingest`
-- Normalizes logs and adds missing timestamps or trace IDs
-- Runs anomaly detection
-- Sends anomalies to an AI provider for root-cause analysis
-- Stores logs, analysis results, and action history
-- Includes basic action logic for alerts, webhooks, and safe remediation stubs
+### Active backend
 
-## Project Structure
+- `main.py`: FastAPI entrypoint, API routes, lifecycle, health check, and exception handling
+- `app/config.py`: environment-driven settings with validation
+- `app/db/`: async SQLAlchemy engine and session management
+- `app/models/`: PostgreSQL ORM models for incidents, investigations, reports, and knowledge chunks
+- `app/services/`: service layer for incidents, investigations, reports, Azure OpenAI, and knowledge retrieval
+- `app/agent/`: multi-step orchestration for log analysis, knowledge retrieval, root cause analysis, remediation planning, and report generation
+- `ui/`: Streamlit client that drives the API workflow
+
+### Legacy prototype
+
+- `database.py`, `queue_config.py`, `worker_tasks.py`, `services/`, and `state/` represent an earlier SQLite and Redis/RQ prototype
+- They are not used by the active FastAPI investigation flow, but they remain in the repository and still compile
+
+## Features
+
+- Incident creation and validation
+- Investigation orchestration with typed step outputs
+- Azure OpenAI chat and embedding integration
+- Mock AI and knowledge services for deterministic local demos
+- PostgreSQL persistence with `pgvector`
+- Structured JSON logging
+- Health endpoint at `GET /healthz`
+- Streamlit UI for manual end-to-end workflows
+
+## Folder Structure
 
 ```text
-main.py                         FastAPI app and routes
-queue_config.py                 Redis/RQ queue setup
-worker_tasks.py                 Log processing worker task
-database.py                     SQLite tables and database helpers
-services/detectors/             Anomaly detection logic
-services/ai/                    AI prompts, provider factory, LLM providers
-services/actions/               Alert/action decision logic
+FixOps/
+|-- app/
+|   |-- agent/
+|   |-- api/
+|   |-- core/
+|   |-- db/
+|   |-- models/
+|   |-- schemas/
+|   `-- services/
+|-- docs/
+|-- knowledge_base/
+|-- scripts/
+|-- ui/
+|-- main.py
+|-- requirement.txt
+`-- RUNNING.md
 ```
 
-## Setup
+## Local Setup
 
-Create a virtual environment:
+### Prerequisites
+
+- Python 3.10+
+- PostgreSQL 15+ with `pgvector`
+- Azure OpenAI credentials for the active backend
+
+### Install
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-Install dependencies:
-
-```powershell
 pip install -r requirement.txt
 ```
 
-If dependencies are missing, install the core packages:
+## Environment Setup
+
+Create a `.env` file from `.env.example` and fill in the required values.
 
 ```powershell
-pip install fastapi uvicorn redis rq pydantic python-dotenv openai ollama
+Copy-Item .env.example .env
 ```
 
-Start Redis:
+Required variables for the active backend:
+
+- `DATABASE_URL`
+- `DB_ECHO`
+- `APP_ENV`
+- `LOG_LEVEL`
+- `AZURE_OPENAI_ENDPOINT`
+- `AZURE_OPENAI_API_KEY`
+- `AZURE_OPENAI_DEPLOYMENT`
+- `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`
+- `AZURE_OPENAI_API_VERSION`
+
+Optional variable for the Streamlit UI:
+
+- `FIXOPS_API_URL`
+
+## Database Setup
+
+### PostgreSQL
+
+The app expects PostgreSQL with the `vector` extension available.
+
+Example local database:
 
 ```powershell
-docker run --name fixops-redis -p 6379:6379 redis
+docker run --name fixops-postgres `
+  -e POSTGRES_USER=user `
+  -e POSTGRES_PASSWORD=pass `
+  -e POSTGRES_DB=fixops_iq `
+  -p 5432:5432 `
+  -d postgres:15
 ```
 
-If the container already exists:
+Install `pgvector` in that database before starting the backend. On startup, the app will run `CREATE EXTENSION IF NOT EXISTS vector` and create tables from the ORM metadata.
 
-```powershell
-docker start fixops-redis
-```
-
-## Configure AI Provider
-
-FixOps uses `LLM_PROVIDER` to choose between Ollama and OpenAI.
-
-Create a `.env` file in the project root.
-
-### Use Ollama
-
-```env
-LLM_PROVIDER=ollama
-OLLAMA_MODEL=qwen3:8b
-```
-
-Pull the model:
-
-```powershell
-ollama pull qwen3:8b
-```
-
-You can use a different Ollama model by changing `OLLAMA_MODEL`.
-
-### Use OpenAI
-
-```env
-LLM_PROVIDER=openai
-OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-4.1-mini
-```
-
-Restart the API and workers after changing `.env`.
-
-## Run
-
-Start the API:
+## Running Backend
 
 ```powershell
 python -m uvicorn main:app --reload
 ```
 
-Start the log worker:
+Useful endpoints:
+
+- API docs: `http://127.0.0.1:8000/docs`
+- Health: `http://127.0.0.1:8000/healthz`
+
+## Running Frontend
+
+Set the API base URL and start Streamlit:
 
 ```powershell
-rq worker logs --worker-class rq.worker.SimpleWorker
+$env:FIXOPS_API_URL="http://127.0.0.1:8000"
+streamlit run ui/app.py
 ```
 
-Start the analysis worker:
+## API Endpoints
+
+- `POST /incidents`
+  Creates an incident record.
+- `POST /investigate`
+  Starts an investigation for an incident unless one is already active.
+- `GET /reports/{id}`
+  Fetches the final structured report for an investigation.
+- `GET /healthz`
+  Executes a database health check.
+
+### Example workflow
+
+Create an incident:
 
 ```powershell
-rq worker analysis --worker-class rq.worker.SimpleWorker
-```
-
-Or run one worker for all queues:
-
-```powershell
-rq worker logs analysis actions --worker-class rq.worker.SimpleWorker
-```
-
-API URL:
-
-```text
-http://127.0.0.1:8000
-```
-
-## API Examples
-
-Send logs:
-
-```powershell
-Invoke-RestMethod `
-  -Uri "http://127.0.0.1:8000/ingest" `
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/incidents" `
   -Method Post `
   -ContentType "application/json" `
-  -Body '{
-    "logs": [
-      {
-        "level": "ERROR",
-        "service": "payments",
-        "message": "payment timeout while calling gateway",
-        "metadata": {
-          "region": "us-east-1"
-        }
-      }
-    ]
-  }'
+  -Body '{"title":"Payments timeout","description":"Checkout failures observed","raw_log":"2026-06-12T14:22:11Z ERROR payments-api request timed out","severity":"HIGH"}'
 ```
 
-Read logs:
+Start an investigation:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/logs
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/investigate" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body '{"incident_id":"<incident_id>"}'
 ```
 
-Read AI analysis:
+Fetch the report:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/analysis
+Invoke-RestMethod "http://127.0.0.1:8000/reports/<report_id>"
 ```
 
-Read analysis for one trace:
+## Demo Workflow
+
+For a deterministic end-to-end run without a live database or Azure dependency:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/analysis/<trace_id>
+.\.venv\Scripts\python scripts\demo_run.py
 ```
 
-Read action history:
+This uses `MockAzureAIService` and `MockKnowledgeService` to exercise the agent pipeline locally.
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/actions
-```
+## Observability Notes
 
-## Notes
+- Application logs are emitted as JSON to stdout
+- `GET /healthz` verifies database reachability
+- Unexpected application exceptions are logged server-side and return sanitized `500` responses
 
-- Default AI provider is `ollama`.
-- Redis must be running before workers start.
-- `logs.db` is created automatically.
-- Delete `logs.db` to reset local data.
-- AI responses must be valid JSON because the providers parse model output with
-  `json.loads`.
+Recommended next production steps:
 
+- Send JSON logs to a central sink such as Datadog, ELK, or Azure Monitor
+- Add request IDs and distributed tracing
+- Add metrics for investigation latency, failure rate, and external AI call duration
+- Add Alembic migrations before deploying to shared environments
+
+## Future Roadmap
+
+- Replace ORM `create_all` with managed migrations
+- Persist per-step investigation audit records instead of in-memory state only
+- Add authenticated API access and rate limiting
+- Move long-running investigations to background workers instead of request/response execution
+- Replace the mock knowledge service with database-backed retrieval
