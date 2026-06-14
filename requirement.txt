@@ -1,7 +1,17 @@
-redis 
+redis
 rq
 fastapi
-pydnatic
-uuid
+uvicorn
+pydantic
+pydantic-settings
+sqlalchemy>=2.0
+asyncpg
+alembic
+pgvector
+requests
+streamlit
+openai
+python-dotenv
+ollama
 
 
