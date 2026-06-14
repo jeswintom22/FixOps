@@ -16,10 +16,10 @@ from app.services.ai import (
 
 def build_ai_provider(settings: Settings) -> ProviderAIService:
     provider = settings.resolved_ai_provider
-    if provider == "azure_openai":
-        return AzureOpenAIService.from_settings(settings)
     if provider == "azure_foundry":
         return AzureFoundryService.from_settings(settings)
+    if provider == "azure_openai":
+        return AzureOpenAIService.from_settings(settings)
     if provider == "ollama":
         return OllamaService.from_settings(settings)
     if provider == "mock":

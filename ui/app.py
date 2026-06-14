@@ -11,7 +11,12 @@ import streamlit as st
 
 from ui.api import FixOpsApiError, create_incident, get_report, run_investigation
 from ui.config import API_URL_ENV_VAR, get_api_base_url
-from ui.formatters import build_report_markdown, parse_evidence_items, parse_remediation_steps
+from ui.formatters import (
+    build_reasoning_trace,
+    build_report_markdown,
+    parse_evidence_items,
+    parse_remediation_steps,
+)
 
 
 st.set_page_config(
@@ -142,6 +147,42 @@ def inject_styles() -> None:
                 border: 1px solid #d9e2ec;
                 border-radius: 12px;
             }
+            .reasoning-timeline {
+                display: flex;
+                flex-direction: column;
+                gap: 0.65rem;
+                margin: 0.5rem 0 1rem;
+            }
+            .reasoning-item {
+                display: flex;
+                align-items: center;
+                gap: 0.7rem;
+                color: #243b53;
+                font-size: 0.95rem;
+            }
+            .reasoning-dot {
+                width: 0.75rem;
+                height: 0.75rem;
+                border-radius: 999px;
+                flex-shrink: 0;
+            }
+            .reasoning-badges {
+                display: flex;
+                gap: 0.5rem;
+                flex-wrap: wrap;
+                margin: 0.25rem 0 0.75rem;
+            }
+            .reasoning-badge {
+                display: inline-flex;
+                align-items: center;
+                padding: 0.2rem 0.65rem;
+                border-radius: 999px;
+                font-size: 0.85rem;
+                font-weight: 600;
+                background: #fff7ed;
+                color: #b45309;
+                border: 1px solid #fdba74;
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -262,6 +303,59 @@ def render_result_metrics(incident: dict[str, Any], investigation: dict[str, Any
     )
 
 
+def render_reasoning_trace(
+    incident: dict[str, Any],
+    investigation: dict[str, Any],
+    report: dict[str, Any],
+) -> None:
+    trace = build_reasoning_trace(incident, investigation, report)
+    dot_colors = {
+        "completed": "#15803d",
+        "retried": "#d97706",
+        "skipped": "#94a3b8",
+    }
+
+    st.markdown("#### Agent Reasoning Trace")
+    st.markdown(
+        "<div class='reasoning-timeline'>"
+        + "".join(
+            (
+                "<div class='reasoning-item'>"
+                f"<span class='reasoning-dot' style='background:{dot_colors[item['status']]}'></span>"
+                f"<span>{item['label']} - {item['status'].capitalize()}</span>"
+                "</div>"
+            )
+            for item in trace["timeline"]
+        )
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    badges: list[str] = []
+    if trace["root_cause_retried"]:
+        badges.append("Root cause retried")
+    if trace["remediation_retried"]:
+        badges.append("Remediation retried")
+
+    if badges:
+        if hasattr(st, "badge"):
+            badge_columns = st.columns(len(badges))
+            for column, badge in zip(badge_columns, badges, strict=False):
+                with column:
+                    st.badge(badge)
+        else:
+            st.markdown(
+                "<div class='reasoning-badges'>"
+                + "".join(f"<span class='reasoning-badge'>{badge}</span>" for badge in badges)
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+
+    with st.expander("How the agent reasoned"):
+        for explanation in trace["explanations"]:
+            st.markdown(f"- {explanation}")
+
+
 def render_results_panel() -> None:
     with st.container(border=True):
         st.subheader("Investigation Results")
@@ -278,6 +372,8 @@ def render_results_panel() -> None:
 
         st.markdown("#### Executive Summary")
         st.write(report.get("executive_summary", "Not available."))
+
+        render_reasoning_trace(incident, investigation, report)
 
         st.markdown("#### Root Cause Analysis")
         st.write(report.get("root_cause_section", "Not available."))

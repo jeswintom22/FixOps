@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from functools import lru_cache
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,8 +13,10 @@ from app.agent.steps import (
     ReportGenerationStep,
     RootCauseAnalysisStep,
 )
+from app.config import get_settings
 from app.db.session import get_db_session
 from app.services import (
+    DBKnowledgeService,
     EmbeddingService,
     IncidentService,
     InvestigationService,
@@ -32,9 +33,13 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
-@lru_cache
-def get_knowledge_service() -> KnowledgeService:
-    return MockKnowledgeService()
+def get_knowledge_service(
+    session: AsyncSession = Depends(get_session),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
+) -> KnowledgeService:
+    if get_settings().resolved_ai_provider == "mock":
+        return MockKnowledgeService()
+    return DBKnowledgeService(session=session, embedding_service=embedding_service)
 
 
 def get_incident_service(session: AsyncSession = Depends(get_session)) -> IncidentService:

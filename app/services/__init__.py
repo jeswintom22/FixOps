@@ -8,6 +8,7 @@ from app.services.ai import (
     OllamaService,
     ProviderAIService,
 )
+from app.services.db_knowledge_service import DBKnowledgeService
 from app.services.incident_service import IncidentService
 from app.services.investigation_service import InvestigationService
 from app.services.knowledge_service import KnowledgeService, KnowledgeSearchResult, KnowledgeServiceStub
@@ -16,6 +17,7 @@ from app.services.report_service import ReportService
 
 __all__ = [
     "AIServiceStub",
+    "DBKnowledgeService",
     "AzureFoundryService",
     "AzureOpenAIService",
     "EmbeddingService",
