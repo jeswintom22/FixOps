@@ -19,6 +19,14 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("AI_PROVIDER", "LLM_PROVIDER"),
     )
+    llm_provider: str = Field(
+        default="",
+        validation_alias=AliasChoices("LLM_PROVIDER"),
+    )
+    embedding_provider: str = Field(
+        default="",
+        validation_alias=AliasChoices("EMBEDDING_PROVIDER"),
+    )
     endpoint: str = Field(
         default="",
         validation_alias=AliasChoices("ENDPOINT", "AZURE_OPENAI_ENDPOINT"),
@@ -53,6 +61,8 @@ class Settings(BaseSettings):
         "app_env",
         "log_level",
         "ai_provider",
+        "llm_provider",
+        "embedding_provider",
         "endpoint",
         "api_key",
         "api_version",
@@ -82,6 +92,8 @@ class Settings(BaseSettings):
         provider = self.resolved_ai_provider
         configured_values = (
             self.ai_provider,
+            self.llm_provider,
+            self.embedding_provider,
             self.endpoint,
             self.api_key,
             self.api_version,
