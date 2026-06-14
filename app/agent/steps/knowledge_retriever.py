@@ -14,23 +14,33 @@ from app.services.knowledge_service import KnowledgeService, KnowledgeSearchResu
 class KnowledgeRetrievalStep(AgentStep):
     embedding_service: EmbeddingService
     knowledge_service: KnowledgeService
+    top_k: int = 5
     name: str = "KNOWLEDGE_RETRIEVAL"
     order: int = 2
 
-    async def execute(self, state: AgentState) -> AgentState:
+    async def execute(
+        self,
+        state: AgentState,
+        *,
+        top_k: int | None = None,
+        query_suffix: str | None = None,
+    ) -> AgentState:
         if state.log_signals is None:
             raise ValueError("Log analysis must complete before knowledge retrieval.")
 
-        embedding = await self.embedding_service.embed(self._build_query(state))
+        effective_top_k = top_k if top_k is not None else self.top_k
+        query = self._build_query(state, query_suffix=query_suffix)
+        embedding = await self.embedding_service.embed(query)
+        postmortem_top_k = max(1, min(3, effective_top_k))
         runbooks = await self.knowledge_service.search(
-            query=self._build_query(state),
-            top_k=5,
+            query=query,
+            top_k=effective_top_k,
             category_filter=[KnowledgeCategory.RUNBOOK, KnowledgeCategory.PLAYBOOK],
             embedding=embedding,
         )
         postmortems = await self.knowledge_service.search(
-            query=self._build_query(state),
-            top_k=3,
+            query=query,
+            top_k=postmortem_top_k,
             category_filter=[KnowledgeCategory.POSTMORTEM],
             embedding=embedding,
         )
@@ -47,7 +57,7 @@ class KnowledgeRetrievalStep(AgentStep):
                 keywords=list(chunk.keywords),
                 relevance_score=chunk.relevance_score,
             )
-            for chunk in combined[:8]
+            for chunk in combined[:effective_top_k]
         ]
         return state
 
@@ -56,7 +66,7 @@ class KnowledgeRetrievalStep(AgentStep):
             "knowledge_chunks": [asdict(chunk) for chunk in state.knowledge_chunks],
         }
 
-    def _build_query(self, state: AgentState) -> str:
+    def _build_query(self, state: AgentState, *, query_suffix: str | None = None) -> str:
         assert state.log_signals is not None
         parts = [
             state.log_signals.error_type,
@@ -64,4 +74,6 @@ class KnowledgeRetrievalStep(AgentStep):
             *state.log_signals.key_terms,
             *state.log_signals.anomaly_signals,
         ]
+        if query_suffix:
+            parts.append(query_suffix)
         return " | ".join(part for part in parts if part)

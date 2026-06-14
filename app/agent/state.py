@@ -106,7 +106,9 @@ class AgentState:
     log_signals: LogSignals | None = None
     knowledge_chunks: list[KnowledgeChunkContext] = field(default_factory=list)
     root_cause: RootCauseResult | None = None
+    root_cause_retried: bool = False
     remediation: RemediationPlan | None = None
+    remediation_retried: bool = False
     report: ReportResult | None = None
     step_history: list[StepExecution] = field(default_factory=list)
 
