@@ -6,12 +6,12 @@ from typing import Any
 
 from app.agent.state import AgentState, ReportResult, TimelineEvent
 from app.agent.steps.base import AgentStep
-from app.services.azure_ai_service import AzureAIService
+from app.services.ai import LLMService
 
 
 @dataclass(slots=True)
 class ReportGenerationStep(AgentStep):
-    azure_ai_service: AzureAIService
+    llm_service: LLMService
     name: str = "REPORT_GENERATION"
     order: int = 5
 
@@ -19,7 +19,7 @@ class ReportGenerationStep(AgentStep):
         if state.root_cause is None or state.remediation is None:
             raise ValueError("Root cause analysis and remediation planning must complete first.")
 
-        response = await self.azure_ai_service.structured_complete(
+        response = await self.llm_service.structured_complete(
             prompt=self._build_prompt(state),
             schema=ReportResponse,
         )

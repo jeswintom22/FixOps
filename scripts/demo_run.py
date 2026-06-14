@@ -28,7 +28,7 @@ from app.core.constants import (
 from app.models.incident import Incident
 from app.models.investigation import Investigation
 from app.models.report import Report
-from app.services import MockAzureAIService, MockKnowledgeService
+from app.services import MockAIService, MockKnowledgeService
 
 
 async def main() -> None:
@@ -37,19 +37,19 @@ async def main() -> None:
     incident_service = InMemoryIncidentService({incident.id: incident})
     investigation_service = InMemoryInvestigationService({investigation.id: investigation})
     report_service = InMemoryReportService()
-    azure_ai_service = MockAzureAIService()
+    ai_service = MockAIService()
     knowledge_service = MockKnowledgeService()
 
     orchestrator = AgentOrchestrator(
         steps=[
-            LogAnalysisStep(azure_ai_service=azure_ai_service),
+            LogAnalysisStep(llm_service=ai_service),
             KnowledgeRetrievalStep(
-                azure_ai_service=azure_ai_service,
+                embedding_service=ai_service,
                 knowledge_service=knowledge_service,
             ),
-            RootCauseAnalysisStep(azure_ai_service=azure_ai_service),
-            RemediationPlanningStep(azure_ai_service=azure_ai_service),
-            ReportGenerationStep(azure_ai_service=azure_ai_service),
+            RootCauseAnalysisStep(llm_service=ai_service),
+            RemediationPlanningStep(llm_service=ai_service),
+            ReportGenerationStep(llm_service=ai_service),
         ],
         incident_service=incident_service,
         investigation_service=investigation_service,

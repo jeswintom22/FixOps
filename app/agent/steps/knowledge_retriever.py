@@ -6,13 +6,13 @@ from typing import Any
 from app.agent.state import AgentState, KnowledgeChunkContext
 from app.agent.steps.base import AgentStep
 from app.core.constants import KnowledgeCategory
-from app.services.azure_ai_service import AzureAIService
+from app.services.ai import EmbeddingService
 from app.services.knowledge_service import KnowledgeService, KnowledgeSearchResult
 
 
 @dataclass(slots=True)
 class KnowledgeRetrievalStep(AgentStep):
-    azure_ai_service: AzureAIService
+    embedding_service: EmbeddingService
     knowledge_service: KnowledgeService
     name: str = "KNOWLEDGE_RETRIEVAL"
     order: int = 2
@@ -21,7 +21,7 @@ class KnowledgeRetrievalStep(AgentStep):
         if state.log_signals is None:
             raise ValueError("Log analysis must complete before knowledge retrieval.")
 
-        embedding = await self.azure_ai_service.embed(self._build_query(state))
+        embedding = await self.embedding_service.embed(self._build_query(state))
         runbooks = await self.knowledge_service.search(
             query=self._build_query(state),
             top_k=5,

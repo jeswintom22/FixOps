@@ -6,12 +6,12 @@ from typing import Any
 from app.agent.state import AgentState, RemediationPlan, RemediationStepPlan
 from app.agent.steps.base import AgentStep
 from app.core.constants import KnowledgeCategory
-from app.services.azure_ai_service import AzureAIService
+from app.services.ai import LLMService
 
 
 @dataclass(slots=True)
 class RemediationPlanningStep(AgentStep):
-    azure_ai_service: AzureAIService
+    llm_service: LLMService
     name: str = "REMEDIATION"
     order: int = 4
 
@@ -19,7 +19,7 @@ class RemediationPlanningStep(AgentStep):
         if state.root_cause is None:
             raise ValueError("Root cause analysis must complete before remediation planning.")
 
-        response = await self.azure_ai_service.structured_complete(
+        response = await self.llm_service.structured_complete(
             prompt=self._build_prompt(state),
             schema=RemediationResponse,
         )
