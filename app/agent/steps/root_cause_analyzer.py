@@ -5,12 +5,12 @@ from typing import Any
 
 from app.agent.state import AgentState, EvidenceReference, RootCauseResult
 from app.agent.steps.base import AgentStep
-from app.services.azure_ai_service import AzureAIService
+from app.services.ai import LLMService
 
 
 @dataclass(slots=True)
 class RootCauseAnalysisStep(AgentStep):
-    azure_ai_service: AzureAIService
+    llm_service: LLMService
     name: str = "ROOT_CAUSE_ANALYSIS"
     order: int = 3
 
@@ -18,7 +18,7 @@ class RootCauseAnalysisStep(AgentStep):
         if state.log_signals is None:
             raise ValueError("Log analysis must complete before root cause analysis.")
 
-        response = await self.azure_ai_service.structured_complete(
+        response = await self.llm_service.structured_complete(
             prompt=self._build_prompt(state),
             schema=RootCauseResponse,
         )

@@ -12,7 +12,7 @@ The active production path in this repository is the FastAPI backend in `main.py
 - `app/config.py`: environment-driven settings with validation
 - `app/db/`: async SQLAlchemy engine and session management
 - `app/models/`: PostgreSQL ORM models for incidents, investigations, reports, and knowledge chunks
-- `app/services/`: service layer for incidents, investigations, reports, Azure OpenAI, and knowledge retrieval
+- `app/services/`: service layer for incidents, investigations, reports, provider-agnostic AI services, and knowledge retrieval
 - `app/agent/`: multi-step orchestration for log analysis, knowledge retrieval, root cause analysis, remediation planning, and report generation
 - `ui/`: Streamlit client that drives the API workflow
 
@@ -25,7 +25,7 @@ The active production path in this repository is the FastAPI backend in `main.py
 
 - Incident creation and validation
 - Investigation orchestration with typed step outputs
-- Azure OpenAI chat and embedding integration
+- Configurable chat and embedding providers via DI
 - Mock AI and knowledge services for deterministic local demos
 - PostgreSQL persistence with `pgvector`
 - Structured JSON logging
@@ -59,7 +59,7 @@ FixOps/
 
 - Python 3.10+
 - PostgreSQL 15+ with `pgvector`
-- Azure OpenAI credentials for the active backend
+- AI provider credentials for the active backend
 
 ### Install
 
@@ -83,11 +83,12 @@ Required variables for the active backend:
 - `DB_ECHO`
 - `APP_ENV`
 - `LOG_LEVEL`
-- `AZURE_OPENAI_ENDPOINT`
-- `AZURE_OPENAI_API_KEY`
-- `AZURE_OPENAI_DEPLOYMENT`
-- `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`
-- `AZURE_OPENAI_API_VERSION`
+- `AI_PROVIDER`
+- `ENDPOINT`
+- `API_KEY`
+- `API_VERSION`
+- `CHAT_MODEL` or `CHAT_DEPLOYMENT`
+- `EMBEDDING_MODEL` or `EMBEDDING_DEPLOYMENT`
 
 Optional variable for the Streamlit UI:
 
@@ -171,13 +172,13 @@ Invoke-RestMethod "http://127.0.0.1:8000/reports/<report_id>"
 
 ## Demo Workflow
 
-For a deterministic end-to-end run without a live database or Azure dependency:
+For a deterministic end-to-end run without a live database or external AI dependency:
 
 ```powershell
 .\.venv\Scripts\python scripts\demo_run.py
 ```
 
-This uses `MockAzureAIService` and `MockKnowledgeService` to exercise the agent pipeline locally.
+This uses `MockAIService` and `MockKnowledgeService` to exercise the agent pipeline locally.
 
 ## Observability Notes
 

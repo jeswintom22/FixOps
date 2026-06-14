@@ -7,17 +7,17 @@ from typing import Any
 from app.agent.state import AgentState, LogSignals
 from app.agent.steps.base import AgentStep
 from app.core.constants import IncidentSeverity
-from app.services.azure_ai_service import AzureAIService
+from app.services.ai import LLMService
 
 
 @dataclass(slots=True)
 class LogAnalysisStep(AgentStep):
-    azure_ai_service: AzureAIService
+    llm_service: LLMService
     name: str = "LOG_ANALYSIS"
     order: int = 1
 
     async def execute(self, state: AgentState) -> AgentState:
-        response = await self.azure_ai_service.structured_complete(
+        response = await self.llm_service.structured_complete(
             prompt=self._build_prompt(state),
             schema=LogSignalsResponse,
         )

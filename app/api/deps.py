@@ -15,26 +15,21 @@ from app.agent.steps import (
     RootCauseAnalysisStep,
 )
 from app.db.session import get_db_session
-from app.config import get_settings
 from app.services import (
-    AzureOpenAIService,
+    EmbeddingService,
     IncidentService,
     InvestigationService,
+    LLMService,
     MockKnowledgeService,
     ReportService,
 )
-from app.services.azure_ai_service import AzureAIService
+from app.services.ai_factory import get_embedding_service, get_llm_service
 from app.services.knowledge_service import KnowledgeService
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
     async for session in get_db_session():
         yield session
-
-
-@lru_cache
-def get_azure_ai_service() -> AzureAIService:
-    return AzureOpenAIService.from_settings(get_settings())
 
 
 @lru_cache
@@ -60,19 +55,20 @@ def get_agent_orchestrator(
     incident_service: IncidentService = Depends(get_incident_service),
     investigation_service: InvestigationService = Depends(get_investigation_service),
     report_service: ReportService = Depends(get_report_service),
-    azure_ai_service: AzureAIService = Depends(get_azure_ai_service),
+    llm_service: LLMService = Depends(get_llm_service),
+    embedding_service: EmbeddingService = Depends(get_embedding_service),
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
 ) -> AgentOrchestrator:
     return AgentOrchestrator(
         steps=[
-            LogAnalysisStep(azure_ai_service=azure_ai_service),
+            LogAnalysisStep(llm_service=llm_service),
             KnowledgeRetrievalStep(
-                azure_ai_service=azure_ai_service,
+                embedding_service=embedding_service,
                 knowledge_service=knowledge_service,
             ),
-            RootCauseAnalysisStep(azure_ai_service=azure_ai_service),
-            RemediationPlanningStep(azure_ai_service=azure_ai_service),
-            ReportGenerationStep(azure_ai_service=azure_ai_service),
+            RootCauseAnalysisStep(llm_service=llm_service),
+            RemediationPlanningStep(llm_service=llm_service),
+            ReportGenerationStep(llm_service=llm_service),
         ],
         incident_service=incident_service,
         investigation_service=investigation_service,

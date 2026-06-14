@@ -4,7 +4,7 @@ from typing import Any
 
 import requests
 
-from ui.config import get_api_base_url
+from .config import get_api_base_url
 
 
 class FixOpsApiError(RuntimeError):

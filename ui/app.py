@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 from typing import Any
+import os
+import sys
+
+# Ensure the repository root is on sys.path so Streamlit can import the ui package
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import streamlit as st
 
