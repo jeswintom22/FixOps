@@ -1,6 +1,6 @@
 # FixOps IQ
 
-> **Microsoft Agents League 2026 — Reasoning Agents track**
+>
 
 FixOps IQ is an AI-powered SRE reasoning agent that investigates incidents end-to-end. Submit an error log, get back a structured root cause analysis, supporting evidence, and a ranked remediation plan — automatically.
 
