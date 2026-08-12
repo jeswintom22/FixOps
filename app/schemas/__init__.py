@@ -8,6 +8,7 @@ from app.schemas.investigation import (
 )
 from app.schemas.knowledge_chunk import KnowledgeChunkCreate, KnowledgeChunkRead
 from app.schemas.report import ReportCreate, ReportRead
+from app.schemas.step_execution import StepExecutionRead
 
 __all__ = [
     "IncidentCreate",
@@ -22,4 +23,5 @@ __all__ = [
     "KnowledgeChunkRead",
     "ReportCreate",
     "ReportRead",
+    "StepExecutionRead",
 ]

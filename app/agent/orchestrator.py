@@ -119,6 +119,11 @@ class AgentOrchestrator:
                 state=state,
             )
             self._annotate_report_retries(state)
+            investigation.root_cause_retried = state.root_cause_retried
+            investigation.remediation_retried = state.remediation_retried
+            investigation.confidence_score = (
+                state.root_cause.confidence_score if state.root_cause else None
+            )
 
             await self.report_service.create(
                 investigation_id=state.investigation_id,

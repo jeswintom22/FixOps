@@ -15,7 +15,7 @@ def _request(method: str, path: str, payload: dict[str, Any] | None = None) -> d
     url = f"{get_api_base_url()}{path}"
 
     try:
-        response = requests.request(method=method, url=url, json=payload, timeout=120)
+        response = requests.request(method=method, url=url, json=payload, timeout=30)
     except requests.RequestException as exc:
         raise FixOpsApiError(f"Unable to connect to FixOps API at {url}.") from exc
 
@@ -53,3 +53,11 @@ def run_investigation(incident_id: str) -> dict[str, Any]:
 
 def get_report(report_id: str) -> dict[str, Any]:
     return _request("GET", f"/reports/{report_id}")
+
+
+def get_investigation(investigation_id: str) -> dict[str, Any]:
+    return _request("GET", f"/investigations/{investigation_id}")
+
+
+def get_investigation_report(investigation_id: str) -> dict[str, Any]:
+    return _request("GET", f"/investigations/{investigation_id}/report")

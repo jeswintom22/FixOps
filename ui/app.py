@@ -9,13 +9,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import streamlit as st
 
-from ui.api import FixOpsApiError, create_incident, get_report, run_investigation
+from ui.api import FixOpsApiError, create_incident, get_investigation, get_investigation_report, run_investigation
 from ui.config import API_URL_ENV_VAR, get_api_base_url
 from ui.formatters import (
     build_reasoning_trace,
     build_report_markdown,
-    parse_evidence_items,
-    parse_remediation_steps,
 )
 
 
@@ -223,16 +221,22 @@ def submit_incident(title: str, description: str, raw_log: str, severity: str) -
         "severity": severity,
     }
 
-    with st.spinner("Creating incident and running investigation..."):
+    with st.spinner("Creating incident and queueing investigation..."):
         incident = create_incident(payload)
         investigation = run_investigation(incident["id"])
-        report_id = investigation.get("report_id")
-        if not report_id:
-            raise FixOpsApiError("Investigation completed without a generated report ID.")
-        report = get_report(report_id)
+        investigation_data = investigation["investigation"]
+        for _ in range(60):
+            if investigation_data.get("status") in {"COMPLETED", "FAILED"}:
+                break
+            import time
+            time.sleep(1)
+            investigation_data = get_investigation(investigation_data["id"])
+        if investigation_data.get("status") != "COMPLETED":
+            raise FixOpsApiError(investigation_data.get("error_message") or "Investigation did not complete.")
+        report = get_investigation_report(investigation_data["id"])
 
     st.session_state["incident"] = incident
-    st.session_state["investigation"] = investigation["investigation"]
+    st.session_state["investigation"] = investigation_data
     st.session_state["report"] = report
     st.session_state["error_message"] = None
 
@@ -379,15 +383,20 @@ def render_results_panel() -> None:
         st.write(report.get("root_cause_section", "Not available."))
 
         st.markdown("#### Supporting Evidence")
-        evidence_items = parse_evidence_items(report.get("evidence_section", ""))
+        evidence_items = report.get("evidence_refs", [])
         for index, item in enumerate(evidence_items, start=1):
             with st.expander(f"Evidence {index}", expanded=index == 1):
-                st.write(item)
+                st.json(item)
 
         st.markdown("#### Remediation Plan")
-        remediation_steps = parse_remediation_steps(report.get("remediation_section", ""))
+        remediation_steps = report.get("remediation_steps", [])
         if remediation_steps:
-            st.markdown("\n".join(f"{index}. {step}" for index, step in enumerate(remediation_steps, start=1)))
+            for index, step in enumerate(remediation_steps, start=1):
+                st.markdown(f"**{step.get('order', index)}. {step.get('action', 'Unspecified action')}**")
+                if step.get("rationale"):
+                    st.caption(step["rationale"])
+                if step.get("command_hint"):
+                    st.code(step["command_hint"], language="bash")
         else:
             st.write("No remediation plan available.")
 

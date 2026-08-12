@@ -23,7 +23,7 @@ From the repository root (`d:\projects\FixOps`):
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirement.txt
+pip install -r requirements.txt
 ```
 
 If you encounter missing packages, install them manually:
@@ -150,7 +150,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/reports/<report_id>"
 
 - [ ] Python 3.10 installed
 - [ ] Virtual environment created and activated
-- [ ] `pip install -r requirement.txt` completed
+- [ ] `pip install -r requirements.txt` completed
 - [ ] PostgreSQL running and reachable
 - [ ] `pgvector` extension enabled
 - [ ] `.env` file configured with AI provider settings

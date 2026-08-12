@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 TRACE_STEPS: list[tuple[str, str]] = [
@@ -12,43 +11,13 @@ TRACE_STEPS: list[tuple[str, str]] = [
 ]
 
 
-def parse_remediation_steps(section: str) -> list[str]:
-    lines = [line.strip() for line in section.splitlines() if line.strip()]
-    if not lines:
-        return []
-
-    steps: list[str] = []
-    for line in lines:
-        cleaned = re.sub(r"^\s*(?:\d+[\).\:-]|[-*])\s*", "", line).strip()
-        if cleaned:
-            steps.append(cleaned)
-
-    return steps or [section.strip()]
-
-
-def parse_evidence_items(section: str) -> list[str]:
-    chunks = [chunk.strip() for chunk in re.split(r"\n\s*\n", section.strip()) if chunk.strip()]
-    if chunks:
-        return chunks
-
-    lines = [line.strip(" -") for line in section.splitlines() if line.strip()]
-    return lines or [section.strip()]
-
-
-def infer_retry_flags(report: dict[str, Any]) -> tuple[bool, bool]:
-    root_cause_section = str(report.get("root_cause_section", "")).lower()
-    remediation_section = str(report.get("remediation_section", ""))
-    root_cause_retried = "retry" in root_cause_section or "expanded" in root_cause_section
-    remediation_retried = count_sentences(remediation_section) < 3
-    return root_cause_retried, remediation_retried
-
-
 def build_reasoning_trace(
     incident: dict[str, Any],
     investigation: dict[str, Any],
     report: dict[str, Any],
 ) -> dict[str, Any]:
-    root_cause_retried, remediation_retried = infer_retry_flags(report)
+    root_cause_retried = bool(report.get("root_cause_retried", investigation.get("root_cause_retried", False)))
+    remediation_retried = bool(report.get("remediation_retried", investigation.get("remediation_retried", False)))
     investigation_status = str(investigation.get("status", "")).upper()
     current_step = investigation.get("current_step")
     step_positions = {code: index for index, (code, _) in enumerate(TRACE_STEPS)}
@@ -77,9 +46,9 @@ def build_reasoning_trace(
             else "The final root cause section does not suggest a low-confidence retry."
         ),
         (
-            "The remediation section is short enough to trigger the UI's thin-plan retry heuristic."
+            "The remediation planner was retried because the first plan was too thin."
             if remediation_retried
-            else "The remediation section looks substantial enough that the UI does not flag a retry heuristic."
+            else "The remediation planner completed without a thin-plan retry."
         ),
     ]
 
@@ -89,11 +58,6 @@ def build_reasoning_trace(
         "remediation_retried": remediation_retried,
         "explanations": explanations,
     }
-
-
-def count_sentences(section: str) -> int:
-    sentences = [segment.strip() for segment in re.split(r"[.!?]+", section) if segment.strip()]
-    return len(sentences)
 
 
 def build_report_markdown(report: dict[str, str]) -> str:

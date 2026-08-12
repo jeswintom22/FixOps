@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -78,7 +78,7 @@ class ReportResult:
     remediation_section: str
     timeline: list[TimelineEvent] = field(default_factory=list)
     format_version: str = "1.0"
-    generated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass(slots=True)
@@ -128,4 +128,9 @@ class AgentState:
         ]
         payload["investigation_id"] = self.investigation_id
         payload["incident_id"] = self.incident_id
+        payload["evidence_refs"] = [asdict(item) for item in (self.root_cause.evidence_refs if self.root_cause else [])]
+        payload["remediation_steps"] = [asdict(item) for item in (self.remediation.steps if self.remediation else [])]
+        payload["root_cause_retried"] = self.root_cause_retried
+        payload["remediation_retried"] = self.remediation_retried
+        payload["confidence_score"] = self.root_cause.confidence_score if self.root_cause else None
         return payload

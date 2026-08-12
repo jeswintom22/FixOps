@@ -1,4 +1,11 @@
-from enum import StrEnum
+from enum import Enum
+
+
+class StrEnum(str, Enum):
+    """Python 3.10-compatible equivalent of enum.StrEnum."""
+
+    def __str__(self) -> str:
+        return self.value
 
 
 class IncidentSeverity(StrEnum):

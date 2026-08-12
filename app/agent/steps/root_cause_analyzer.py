@@ -6,6 +6,7 @@ from typing import Any
 from app.agent.state import AgentState, EvidenceReference, RootCauseResult
 from app.agent.steps.base import AgentStep
 from app.services.ai import LLMService
+from app.config import get_settings
 
 
 @dataclass(slots=True)
@@ -39,7 +40,7 @@ class RootCauseAnalysisStep(AgentStep):
             [
                 "Determine the most likely root cause for the incident.",
                 f"Incident title: {state.incident_title}",
-                f"Raw log: {state.raw_log}",
+                f"Raw log: {state.raw_log[:get_settings().raw_log_prompt_budget]}",
                 f"Log signals: {state.log_signals}",
                 "Knowledge context:",
                 knowledge_context or "No knowledge context found.",

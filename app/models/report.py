@@ -38,6 +38,15 @@ class Report(UUIDPrimaryKeyMixin, Base):
         server_default=text("'[]'::jsonb"),
         nullable=False,
     )
+    evidence_refs: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False
+    )
+    remediation_steps: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False
+    )
+    root_cause_retried: Mapped[bool] = mapped_column(default=False, nullable=False)
+    remediation_retried: Mapped[bool] = mapped_column(default=False, nullable=False)
+    confidence_score: Mapped[float | None] = mapped_column()
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -12,6 +12,9 @@ class InvestigationBase(ORMModel):
     error_message: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    root_cause_retried: bool = False
+    remediation_retried: bool = False
+    confidence_score: float | None = None
 
 
 class InvestigationCreate(InvestigationBase):

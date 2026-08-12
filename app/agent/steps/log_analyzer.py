@@ -45,7 +45,7 @@ class LogAnalysisStep(AgentStep):
                 f"Source: {state.source or 'unknown'}",
                 f"Environment: {state.environment or 'unknown'}",
                 "Raw log:",
-                state.raw_log,
+                state.raw_log[:12000],
             ]
         )
 

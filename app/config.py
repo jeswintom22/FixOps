@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     db_echo: bool = Field(default=False, alias="DB_ECHO")
     app_env: str = Field(default="development", alias="APP_ENV")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    api_auth_token: str = Field(default="", validation_alias=AliasChoices("API_AUTH_TOKEN", "FIXOPS_API_KEY"))
+    request_timeout_seconds: float = Field(default=30.0, validation_alias=AliasChoices("REQUEST_TIMEOUT_SECONDS"))
+    raw_log_prompt_budget: int = Field(default=12000, validation_alias=AliasChoices("RAW_LOG_PROMPT_BUDGET"))
+    max_output_tokens: int = Field(default=2048, validation_alias=AliasChoices("MAX_OUTPUT_TOKENS"))
     ai_provider: str = Field(
         default="",
         validation_alias=AliasChoices("AI_PROVIDER", "LLM_PROVIDER"),

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import InvestigationStatus
 from app.models.investigation import Investigation
+from app.models.step_execution import StepExecution
 
 
 @dataclass(slots=True)
@@ -52,6 +53,13 @@ class InvestigationService:
         investigation = await self._require(investigation_id)
         try:
             investigation.current_step = step_name
+            self.session.add(StepExecution(
+                investigation_id=investigation_id,
+                step_name=step_name,
+                step_order=0,
+                status=InvestigationStatus.RUNNING,
+                started_at=datetime.now(timezone.utc),
+            ))
             await self.session.flush()
             await self.session.commit()
             await self.session.refresh(investigation)
@@ -68,8 +76,26 @@ class InvestigationService:
         output: dict[str, Any],
     ) -> Investigation:
         investigation = await self._require(investigation_id)
-        del step_order, output
         try:
+            statement = select(StepExecution).where(
+                StepExecution.investigation_id == investigation_id,
+                StepExecution.step_name == step_name,
+                StepExecution.status == InvestigationStatus.RUNNING,
+            ).order_by(StepExecution.started_at.desc())
+            execution = (await self.session.execute(statement)).scalars().first()
+            if execution is None:
+                execution = StepExecution(
+                    investigation_id=investigation_id,
+                    step_name=step_name,
+                    step_order=step_order,
+                    status=InvestigationStatus.COMPLETED,
+                    started_at=datetime.now(timezone.utc),
+                )
+                self.session.add(execution)
+            execution.step_order = step_order
+            execution.status = InvestigationStatus.COMPLETED
+            execution.completed_at = datetime.now(timezone.utc)
+            execution.output = output
             investigation.current_step = step_name
             await self.session.flush()
             await self.session.commit()
@@ -78,6 +104,13 @@ class InvestigationService:
         except Exception:
             await self.session.rollback()
             raise
+
+    async def get_steps(self, investigation_id: UUID) -> list[StepExecution]:
+        statement = select(StepExecution).where(
+            StepExecution.investigation_id == investigation_id
+        ).order_by(StepExecution.step_order, StepExecution.started_at)
+        result = await self.session.execute(statement)
+        return list(result.scalars())
 
     async def mark_completed(self, investigation_id: UUID) -> Investigation:
         return await self._update_status(

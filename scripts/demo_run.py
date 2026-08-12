@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -151,7 +151,7 @@ class InMemoryIncidentService:
             raise LookupError(f"Incident {incident_id} was not found.")
 
         incident.status = status
-        incident.updated_at = datetime.now(UTC)
+        incident.updated_at = datetime.now(timezone.utc)
         return incident
 
 
@@ -166,7 +166,7 @@ class InMemoryInvestigationService:
     async def mark_running(self, investigation_id: UUID) -> Investigation:
         investigation = await self._require(investigation_id)
         investigation.status = InvestigationStatus.RUNNING
-        investigation.started_at = investigation.started_at or datetime.now(UTC)
+        investigation.started_at = investigation.started_at or datetime.now(timezone.utc)
         return investigation
 
     async def mark_step_started(self, investigation_id: UUID, step_name: str) -> Investigation:
@@ -192,7 +192,7 @@ class InMemoryInvestigationService:
     async def mark_completed(self, investigation_id: UUID) -> Investigation:
         investigation = await self._require(investigation_id)
         investigation.status = InvestigationStatus.COMPLETED
-        investigation.completed_at = datetime.now(UTC)
+        investigation.completed_at = datetime.now(timezone.utc)
         return investigation
 
     async def mark_failed(self, investigation_id: UUID, error: str) -> Investigation:
