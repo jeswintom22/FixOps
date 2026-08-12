@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.agent.state import AgentState, ReportResult, TimelineEvent
 from app.agent.steps.base import AgentStep
 from app.services.ai import LLMService
+from app.config import get_settings
 
 
 @dataclass(slots=True)
@@ -46,7 +47,7 @@ class ReportGenerationStep(AgentStep):
                 "Assemble the final investigation report.",
                 f"Incident title: {state.incident_title}",
                 f"Incident description: {state.incident_description or 'n/a'}",
-                f"Raw log: {state.raw_log}",
+                f"Raw log: {state.raw_log[:get_settings().raw_log_prompt_budget]}",
                 f"Log signals: {state.log_signals}",
                 f"Root cause: {state.root_cause}",
                 f"Remediation plan: {state.remediation}",
@@ -83,7 +84,7 @@ class ReportResponse:
                 for item in self.timeline or []
             ],
             format_version=self.format_version,
-            generated_at=self.generated_at or datetime.now(UTC),
+            generated_at=self.generated_at or datetime.now(timezone.utc),
         )
 
 

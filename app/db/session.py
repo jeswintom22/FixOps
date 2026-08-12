@@ -33,11 +33,13 @@ async def get_db_session() -> AsyncIterator[AsyncSession]:
 
 
 async def init_db() -> None:
+    if get_settings().app_env not in {"development", "test"}:
+        return
     async with engine.begin() as connection:
         if connection.dialect.name == "postgresql":
             # pgvector is required for the knowledge chunk embedding column.
             await connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        # Create all tables
+        # Local/dev fallback only. Deployments must run `alembic upgrade head`.
         await connection.run_sync(Base.metadata.create_all)
 
 

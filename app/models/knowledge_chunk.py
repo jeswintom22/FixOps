@@ -1,6 +1,16 @@
 from typing import Any
 
-from pgvector.sqlalchemy import Vector
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:  # Mock/demo environments do not need vector SQL types.
+    from sqlalchemy.types import JSON, TypeDecorator
+
+    class Vector(TypeDecorator):  # type: ignore[no-redef]
+        impl = JSON
+        cache_ok = True
+
+        def __init__(self, dimensions: int, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
 from sqlalchemy import Enum, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column

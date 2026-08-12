@@ -6,9 +6,17 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from ollama import AsyncClient as AsyncOllamaClient
-from openai import AsyncAzureOpenAI, AsyncOpenAI
+try:
+    from ollama import AsyncClient as AsyncOllamaClient
+except ImportError:  # Optional when running mock mode.
+    AsyncOllamaClient = Any  # type: ignore[misc,assignment]
+try:
+    from openai import AsyncAzureOpenAI, AsyncOpenAI
+except ImportError:  # Optional when running mock mode.
+    AsyncAzureOpenAI = Any  # type: ignore[misc,assignment]
+    AsyncOpenAI = Any  # type: ignore[misc,assignment]
 from pydantic import TypeAdapter
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import Settings
 from app.core.constants import IncidentSeverity
@@ -78,6 +86,8 @@ class AIProviderConfig:
     chat_deployment: str
     embedding_model: str
     embedding_deployment: str
+    request_timeout: float = 30.0
+    max_output_tokens: int = 2048
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "AIProviderConfig":
@@ -90,6 +100,8 @@ class AIProviderConfig:
             chat_deployment=settings.chat_deployment,
             embedding_model=settings.embedding_model,
             embedding_deployment=settings.embedding_deployment,
+            request_timeout=settings.request_timeout_seconds,
+            max_output_tokens=settings.max_output_tokens,
         )
 
     @property
@@ -111,6 +123,7 @@ class AzureOpenAIService(ProviderAIService):
             azure_endpoint=self.config.endpoint,
             api_key=self.config.api_key,
             api_version=self.config.api_version,
+            timeout=self.config.request_timeout,
         )
 
     @classmethod
@@ -125,6 +138,7 @@ class AzureOpenAIService(ProviderAIService):
     ) -> str:
         request_kwargs: dict[str, Any] = {
             "model": self.config.chat_target,
+            "max_tokens": self.config.max_output_tokens,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -142,6 +156,7 @@ class AzureOpenAIService(ProviderAIService):
             model=self.config.chat_target,
             prompt=prompt,
             schema=schema,
+            max_output_tokens=self.config.max_output_tokens,
         )
 
     async def embed(self, text: str) -> list[float]:
@@ -164,6 +179,7 @@ class AzureFoundryService(ProviderAIService):
             default_query={"api-version": self.config.api_version}
             if self.config.api_version
             else None,
+            timeout=self.config.request_timeout,
         )
 
     @classmethod
@@ -178,6 +194,7 @@ class AzureFoundryService(ProviderAIService):
     ) -> str:
         request_kwargs: dict[str, Any] = {
             "model": self.config.chat_target,
+            "max_tokens": self.config.max_output_tokens,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -195,6 +212,7 @@ class AzureFoundryService(ProviderAIService):
             model=self.config.chat_target,
             prompt=prompt,
             schema=schema,
+            max_output_tokens=self.config.max_output_tokens,
         )
 
     async def embed(self, text: str) -> list[float]:
@@ -214,6 +232,7 @@ class OllamaService(ProviderAIService):
         kwargs: dict[str, Any] = {}
         if self.config.endpoint:
             kwargs["host"] = self.config.endpoint
+        kwargs["timeout"] = self.config.request_timeout
         self._client = AsyncOllamaClient(**kwargs)
 
     @classmethod
@@ -251,6 +270,7 @@ class OllamaService(ProviderAIService):
                 {"role": "user", "content": prompt},
             ],
             format=schema_adapter.json_schema(),
+            options={"num_predict": self.config.max_output_tokens},
         )
         content = str(response.message.content or "{}")
         return schema_adapter.validate_python(json.loads(content))
@@ -421,7 +441,7 @@ class MockAIService(ProviderAIService):
 
     def _build_report(self, prompt: str) -> dict[str, Any]:
         import re
-        from datetime import UTC, datetime
+        from datetime import datetime, timezone
 
         title = self._match(prompt, r"Incident title:\s*(.+)") or "Incident Investigation Report"
         timeline = [
@@ -467,7 +487,7 @@ class MockAIService(ProviderAIService):
             ),
             "timeline": timeline,
             "format_version": "1.0",
-            "generated_at": datetime.now(UTC),
+            "generated_at": datetime.now(timezone.utc),
         }
 
     @staticmethod
@@ -503,6 +523,7 @@ async def _structured_complete_with_openai_client(
     model: str,
     prompt: str,
     schema: type[SchemaT],
+    max_output_tokens: int,
 ) -> SchemaT:
     schema_adapter = TypeAdapter(schema)
     schema_name = getattr(schema, "__name__", "StructuredResponse")
@@ -512,8 +533,21 @@ async def _structured_complete_with_openai_client(
         "schema": json_schema,
         "strict": True,
     }
-    completion = await client.chat.completions.create(
+    completion = await _openai_completion(client, model, prompt, schema_payload, max_output_tokens)
+    content = completion.choices[0].message.content or "{}"
+    try:
+        return schema_adapter.validate_python(json.loads(content))
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        corrective = prompt + "\nYour previous response was invalid. Return only valid JSON matching the schema."
+        completion = await _openai_completion(client, model, corrective, schema_payload, max_output_tokens)
+        return schema_adapter.validate_python(json.loads(completion.choices[0].message.content or "{}"))
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=0.5, max=4), reraise=True)
+async def _openai_completion(client: AsyncAzureOpenAI | AsyncOpenAI, model: str, prompt: str, schema_payload: dict[str, Any], max_output_tokens: int):
+    return await client.chat.completions.create(
         model=model,
+        max_tokens=max_output_tokens,
         messages=[
             {
                 "role": "system",
@@ -529,5 +563,3 @@ async def _structured_complete_with_openai_client(
             "json_schema": schema_payload,
         },
     )
-    content = completion.choices[0].message.content or "{}"
-    return schema_adapter.validate_python(json.loads(content))

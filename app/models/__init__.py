@@ -9,3 +9,6 @@ __all__ = [
     "KnowledgeChunk",
     "Report",
 ]
+from app.models.step_execution import StepExecution
+
+__all__ = ["StepExecution"]

@@ -50,7 +50,7 @@ The full demo runs in mock mode — no API keys or database needed.
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirement.txt
+pip install -r requirements.txt
 
 $env:AI_PROVIDER="mock"
 python scripts/demo_run.py
@@ -124,9 +124,8 @@ FixOps/
 │   ├── demo_run.py     — offline demo, no credentials needed
 │   └── ingest_knowledge.py
 ├── ui/                 — Streamlit client
-├── legacy/             — earlier Redis/RQ + SQLite prototype (not used)
 ├── main.py
-└── requirement.txt
+└── requirements.txt
 ```
 
 ---
@@ -145,7 +144,7 @@ FixOps/
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirement.txt
+pip install -r requirements.txt
 ```
 
 ### PostgreSQL with pgvector
@@ -227,7 +226,10 @@ streamlit run ui/app.py
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/incidents` | Create an incident record |
-| `POST` | `/investigate` | Run the full agent pipeline for an incident |
+| `POST` | `/investigate` | Queue the agent pipeline and return `202` |
+| `GET` | `/investigations/{id}` | Poll status and current step |
+| `GET` | `/investigations/{id}/steps` | Read step audit records |
+| `GET` | `/investigations/{id}/report` | Fetch a completed report |
 | `GET` | `/reports/{id}` | Fetch the structured investigation report |
 | `GET` | `/healthz` | Database health check |
 
@@ -251,3 +253,6 @@ API docs available at `http://127.0.0.1:8000/docs` when running.
 - `GET /healthz` verifies database reachability
 - Unhandled exceptions are logged server-side and return sanitized 500 responses
 - Investigation status tracked per step in PostgreSQL (`QUEUED → RUNNING → COMPLETED / FAILED`)
+- Structured evidence, remediation steps, retry flags, and confidence are persisted and exposed
+- Set `API_AUTH_TOKEN` to require `X-API-Key` on write endpoints
+- Run `alembic upgrade head` for deployed schema changes; `create_all` is only a local fallback

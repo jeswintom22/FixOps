@@ -6,6 +6,9 @@ __pycache__/
 .env
 .env.*
 !.env.example
+.coverage
+htmlcov/
+.pytest_cache/
 .venv/
 venv/
 
@@ -36,5 +39,8 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
-.env
-.env
+
+# Local databases and generated artifacts
+*.sqlite-wal
+*.sqlite-shm
+alembic/versions/*.pyc

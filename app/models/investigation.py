@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, Uuid
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.constants import InvestigationStatus
@@ -13,6 +13,8 @@ class Investigation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("idx_investigations_incident", "incident_id"),
         Index("idx_investigations_status", "status"),
+        Index("uq_active_investigation_per_incident", "incident_id", unique=True,
+              postgresql_where=text("status IN ('QUEUED', 'RUNNING')")),
     )
 
     incident_id: Mapped[UUID] = mapped_column(
@@ -30,6 +32,9 @@ class Investigation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    root_cause_retried: Mapped[bool] = mapped_column(default=False, nullable=False)
+    remediation_retried: Mapped[bool] = mapped_column(default=False, nullable=False)
+    confidence_score: Mapped[float | None] = mapped_column()
 
     incident: Mapped["Incident"] = relationship(back_populates="investigations")
     report: Mapped["Report | None"] = relationship(
