@@ -1,26 +1,36 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import requests
 
-from ui.config import get_api_base_url
+from ui.config import get_api_base_url, get_api_key
 
 
 class FixOpsApiError(RuntimeError):
     """Raised when the FixOps API returns an unexpected response."""
 
 
+def _headers() -> dict[str, str]:
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    api_key = get_api_key()
+    if api_key:
+        headers["X-API-Key"] = api_key
+    return headers
+
+
 def _request(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     url = f"{get_api_base_url()}{path}"
 
     try:
-        response = requests.request(method=method, url=url, json=payload, timeout=30)
+        response = requests.request(
+            method=method, url=url, json=payload, headers=_headers(), timeout=120
+        )
     except requests.RequestException as exc:
         raise FixOpsApiError(f"Unable to connect to FixOps API at {url}.") from exc
 
     if response.ok:
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
     detail = _extract_error_detail(response)
     raise FixOpsApiError(f"{response.status_code} {response.reason}: {detail}")
@@ -32,14 +42,15 @@ def _extract_error_detail(response: requests.Response) -> str:
     except ValueError:
         return response.text.strip() or "Unknown error"
 
-    detail = data.get("detail")
-    if isinstance(detail, str):
-        return detail
-    error = data.get("error")
-    if isinstance(error, dict):
-        message = error.get("message")
-        if isinstance(message, str) and message.strip():
-            return message
+    if isinstance(data, dict):
+        detail = data.get("detail")
+        if isinstance(detail, str):
+            return detail
+        error = data.get("error")
+        if isinstance(error, dict):
+            message = error.get("message")
+            if isinstance(message, str) and message.strip():
+                return message
     return "Unexpected API error"
 
 

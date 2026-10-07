@@ -44,3 +44,7 @@ temp/
 *.sqlite-wal
 *.sqlite-shm
 alembic/versions/*.pyc
+.alembic_db/
+.devin/
+node_modules/
+
