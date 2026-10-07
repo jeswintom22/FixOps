@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -27,93 +28,91 @@ def _settings_for(tmp_path: Path) -> Settings:
     return settings
 
 
-@pytest.fixture
-def db_session(tmp_path: Path) -> AsyncSession:
+async def _run_in_isolated_session(
+    tmp_path: Path, test_logic: callable
+) -> None:
+    """Create a temporary DB/session and run async test logic in a single loop."""
     settings = _settings_for(tmp_path)
     engine = make_engine(str(settings.database_path))
 
-    async def _setup() -> async_sessionmaker[AsyncSession]:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        return async_sessionmaker(
-            bind=engine, class_=AsyncSession, expire_on_commit=False
-        )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-    session_factory = asyncio.run(_setup())
+    session_factory = async_sessionmaker(
+        bind=engine, class_=AsyncSession, expire_on_commit=False
+    )
     session = session_factory()
     try:
-        yield session
+        await test_logic(session)
     finally:
-        asyncio.run(session.close())
-        asyncio.run(engine.dispose())
+        await session.close()
+        await engine.dispose()
 
 
-def test_create_and_fetch_incident(db_session: AsyncSession) -> None:
-    async def _run() -> None:
+def test_create_and_fetch_incident(tmp_path: Path) -> None:
+    async def _logic(session: AsyncSession) -> None:
         incident = await create_incident(
-            db_session,
+            session,
             title="Test incident",
             raw_log="ERROR app timeout",
             severity=IncidentSeverity.HIGH,
         )
-        fetched = await get_incident(db_session, incident.id)
+        fetched = await get_incident(session, incident.id)
         assert fetched is not None
         assert fetched.title == "Test incident"
         assert fetched.status == IncidentStatus.INVESTIGATING
 
-    asyncio.run(_run())
+    asyncio.run(_run_in_isolated_session(tmp_path, _logic))
 
 
-def test_list_incidents(db_session: AsyncSession) -> None:
-    async def _run() -> None:
+def test_list_incidents(tmp_path: Path) -> None:
+    async def _logic(session: AsyncSession) -> None:
         await create_incident(
-            db_session, title="One", raw_log="error", severity=IncidentSeverity.LOW
+            session, title="One", raw_log="error", severity=IncidentSeverity.LOW
         )
         await create_incident(
-            db_session, title="Two", raw_log="error", severity=IncidentSeverity.LOW
+            session, title="Two", raw_log="error", severity=IncidentSeverity.LOW
         )
-        incidents = await list_incidents(db_session, limit=10)
+        incidents = await list_incidents(session, limit=10)
         assert len(incidents) == 2
 
-    asyncio.run(_run())
+    asyncio.run(_run_in_isolated_session(tmp_path, _logic))
 
 
-def test_investigation_lifecycle(db_session: AsyncSession) -> None:
-    async def _run() -> None:
+def test_investigation_lifecycle(tmp_path: Path) -> None:
+    async def _logic(session: AsyncSession) -> None:
         incident = await create_incident(
-            db_session, title="T", raw_log="err", severity=IncidentSeverity.MEDIUM
+            session, title="T", raw_log="err", severity=IncidentSeverity.MEDIUM
         )
-        investigation = await create_investigation(db_session, incident.id)
+        investigation = await create_investigation(session, incident.id)
         completed = await mark_investigation_completed(
-            db_session, investigation.id, confidence_score=0.85
+            session, investigation.id, confidence_score=0.85
         )
         assert completed.status == InvestigationStatus.COMPLETED
         assert completed.confidence_score == pytest.approx(0.85)
 
-    asyncio.run(_run())
+    asyncio.run(_run_in_isolated_session(tmp_path, _logic))
 
 
-def test_resolve_incident(db_session: AsyncSession) -> None:
-    async def _run() -> None:
+def test_resolve_incident(tmp_path: Path) -> None:
+    async def _logic(session: AsyncSession) -> None:
         incident = await create_incident(
-            db_session, title="T", raw_log="err", severity=IncidentSeverity.MEDIUM
+            session, title="T", raw_log="err", severity=IncidentSeverity.MEDIUM
         )
         resolved = await update_incident_status(
-            db_session, incident.id, IncidentStatus.RESOLVED
+            session, incident.id, IncidentStatus.RESOLVED
         )
         assert resolved.status == IncidentStatus.RESOLVED
 
-    asyncio.run(_run())
+    asyncio.run(_run_in_isolated_session(tmp_path, _logic))
 
 
-def test_create_report(db_session: AsyncSession) -> None:
-    from datetime import datetime, timezone
-
-    async def _run() -> None:
+def test_create_report(tmp_path: Path) -> None:
+    async def _logic(session: AsyncSession) -> None:
         incident = await create_incident(
-            db_session, title="T", raw_log="err", severity=IncidentSeverity.MEDIUM
+            session, title="T", raw_log="err", severity=IncidentSeverity.MEDIUM
         )
-        investigation = await create_investigation(db_session, incident.id)
+        investigation = await create_investigation(session, incident.id)
         report_data = {
             "investigation_id": investigation.id,
             "incident_id": incident.id,
@@ -132,9 +131,9 @@ def test_create_report(db_session: AsyncSession) -> None:
             "format_version": "1.0",
             "generated_at": datetime.now(timezone.utc),
         }
-        await create_or_update_report(db_session, report_data)
-        fetched = await get_report_for_investigation(db_session, investigation.id)
+        await create_or_update_report(session, report_data)
+        fetched = await get_report_for_investigation(session, investigation.id)
         assert fetched is not None
         assert fetched.title == "Report"
 
-    asyncio.run(_run())
+    asyncio.run(_run_in_isolated_session(tmp_path, _logic))
