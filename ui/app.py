@@ -1,215 +1,41 @@
 from __future__ import annotations
 
-from typing import Any
 import os
 import sys
 
-# Ensure the repository root is on sys.path so Streamlit can import the ui package
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import streamlit as st
 
-from ui.api import FixOpsApiError, create_incident, get_investigation, get_investigation_report, run_investigation
-from ui.config import API_URL_ENV_VAR, get_api_base_url
-from ui.formatters import (
-    build_reasoning_trace,
-    build_report_markdown,
+from ui.api import (
+    FixOpsApiError,
+    create_incident,
+    get_investigation,
+    get_investigation_report,
+    run_investigation,
 )
+from ui.config import API_KEY_ENV_VAR, API_URL_ENV_VAR, get_api_base_url
 
+st.set_page_config(page_title="FixOps", page_icon="🔧", layout="wide")
 
-st.set_page_config(
-    page_title="FixOps IQ",
-    page_icon=":material/monitoring:",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
-
-WORKFLOW_STEPS = [
-    "Incident",
-    "Log Analysis",
-    "Knowledge Retrieval",
-    "Root Cause Analysis",
-    "Remediation Planning",
-    "Report Generation",
-]
-SEVERITY_OPTIONS = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 DEFAULT_LOG = """2026-06-12T14:22:11Z ERROR payments-api request timed out after 30s
 2026-06-12T14:22:13Z WARN payments-api retry budget exhausted for gateway dependency
 2026-06-12T14:22:18Z ERROR payments-api downstream 503 returned by card processor
 """
 
 
-def initialize_state() -> None:
-    st.session_state.setdefault("report", None)
-    st.session_state.setdefault("incident", None)
-    st.session_state.setdefault("investigation", None)
-    st.session_state.setdefault("error_message", None)
-
-
-def inject_styles() -> None:
-    st.markdown(
-        """
-        <style>
-            .stApp {
-                background: #f5f7fb;
-            }
-            .block-container {
-                max-width: 1440px;
-                padding-top: 2rem;
-                padding-bottom: 2rem;
-            }
-            .fixops-header {
-                background: white;
-                border: 1px solid #d9e2ec;
-                border-radius: 16px;
-                padding: 1.5rem 1.75rem;
-                margin-bottom: 1rem;
-                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
-            }
-            .fixops-kicker {
-                color: #486581;
-                font-size: 0.9rem;
-                font-weight: 600;
-                letter-spacing: 0.08em;
-                text-transform: uppercase;
-                margin-bottom: 0.35rem;
-            }
-            .fixops-title {
-                color: #102a43;
-                font-size: 2.2rem;
-                font-weight: 700;
-                margin: 0;
-            }
-            .fixops-subtitle {
-                color: #627d98;
-                font-size: 1rem;
-                margin-top: 0.35rem;
-            }
-            .workflow-card {
-                background: white;
-                border: 1px solid #d9e2ec;
-                border-radius: 16px;
-                padding: 1rem 1.25rem;
-                margin-bottom: 1.25rem;
-                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
-            }
-            .workflow-title {
-                color: #102a43;
-                font-size: 0.95rem;
-                font-weight: 600;
-                margin-bottom: 0.75rem;
-            }
-            .workflow-row {
-                color: #243b53;
-                font-size: 0.95rem;
-                line-height: 1.6;
-                word-break: break-word;
-            }
-            .metric-strip {
-                display: flex;
-                gap: 0.75rem;
-                flex-wrap: wrap;
-                margin-bottom: 1rem;
-            }
-            .metric-tile {
-                background: #f8fafc;
-                border: 1px solid #d9e2ec;
-                border-radius: 12px;
-                padding: 0.85rem 1rem;
-                min-width: 180px;
-            }
-            .metric-label {
-                color: #627d98;
-                font-size: 0.8rem;
-                text-transform: uppercase;
-                letter-spacing: 0.06em;
-                margin-bottom: 0.25rem;
-            }
-            .metric-value {
-                color: #102a43;
-                font-size: 1rem;
-                font-weight: 700;
-            }
-            div[data-testid="stForm"] {
-                border: none;
-                padding: 0;
-            }
-            div[data-testid="stVerticalBlockBorderWrapper"] {
-                background: white;
-                border-radius: 16px;
-                border: 1px solid #d9e2ec;
-                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
-            }
-            div[data-testid="stExpander"] {
-                border: 1px solid #d9e2ec;
-                border-radius: 12px;
-            }
-            .reasoning-timeline {
-                display: flex;
-                flex-direction: column;
-                gap: 0.65rem;
-                margin: 0.5rem 0 1rem;
-            }
-            .reasoning-item {
-                display: flex;
-                align-items: center;
-                gap: 0.7rem;
-                color: #243b53;
-                font-size: 0.95rem;
-            }
-            .reasoning-dot {
-                width: 0.75rem;
-                height: 0.75rem;
-                border-radius: 999px;
-                flex-shrink: 0;
-            }
-            .reasoning-badges {
-                display: flex;
-                gap: 0.5rem;
-                flex-wrap: wrap;
-                margin: 0.25rem 0 0.75rem;
-            }
-            .reasoning-badge {
-                display: inline-flex;
-                align-items: center;
-                padding: 0.2rem 0.65rem;
-                border-radius: 999px;
-                font-size: 0.85rem;
-                font-weight: 600;
-                background: #fff7ed;
-                color: #b45309;
-                border: 1px solid #fdba74;
-            }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+def init_state() -> None:
+    for key in ("report", "incident", "investigation", "error"):
+        st.session_state.setdefault(key, None)
 
 
 def render_header() -> None:
+    st.title("FixOps")
+    st.caption("AI SRE agent for incident investigation")
+    api_key_status = "set" if os.getenv(API_KEY_ENV_VAR) else "not set"
     st.markdown(
-        """
-        <div class="fixops-header">
-            <div class="fixops-kicker">Enterprise Incident Intelligence</div>
-            <h1 class="fixops-title">FixOps IQ</h1>
-            <div class="fixops-subtitle">Enterprise AI SRE Agent</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_workflow() -> None:
-    workflow = " &rarr; ".join(WORKFLOW_STEPS)
-    st.markdown(
-        f"""
-        <div class="workflow-card">
-            <div class="workflow-title">Investigation Workflow</div>
-            <div class="workflow-row">{workflow}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+        f"Backend: `{get_api_base_url()}` (from `${API_URL_ENV_VAR}`). "
+        f"API key: `{api_key_status}` (from `${API_KEY_ENV_VAR}`)."
     )
 
 
@@ -224,208 +50,110 @@ def submit_incident(title: str, description: str, raw_log: str, severity: str) -
     with st.spinner("Creating incident and queueing investigation..."):
         incident = create_incident(payload)
         investigation = run_investigation(incident["id"])
+
         investigation_data = investigation["investigation"]
-        for _ in range(60):
+        for _ in range(120):
             if investigation_data.get("status") in {"COMPLETED", "FAILED"}:
                 break
             import time
+
             time.sleep(1)
             investigation_data = get_investigation(investigation_data["id"])
+
         if investigation_data.get("status") != "COMPLETED":
-            raise FixOpsApiError(investigation_data.get("error_message") or "Investigation did not complete.")
+            error = investigation_data.get("error_message") or "Investigation did not complete."
+            raise FixOpsApiError(error)
+
         report = get_investigation_report(investigation_data["id"])
 
     st.session_state["incident"] = incident
     st.session_state["investigation"] = investigation_data
     st.session_state["report"] = report
-    st.session_state["error_message"] = None
+    st.session_state["error"] = None
 
 
-def render_submission_panel() -> None:
+def render_input_panel() -> None:
     with st.container(border=True):
-        st.subheader("Incident Submission")
-        st.caption(f"API endpoint: `{get_api_base_url()}` from `${API_URL_ENV_VAR}`")
+        st.subheader("Submit incident")
 
-        with st.form("incident_submission_form", clear_on_submit=False):
-            title = st.text_input(
-                "Title",
-                placeholder="Payments API timeout across primary region",
+        with st.form("incident_form", clear_on_submit=False):
+            title = st.text_input("Title", placeholder="Payments API timeout across primary region")
+            description = st.text_area("Description", height=80)
+            raw_log = st.text_area("Raw log", value=DEFAULT_LOG, height=200)
+            severity = st.selectbox(
+                "Severity", options=["CRITICAL", "HIGH", "MEDIUM", "LOW"], index=2
             )
-            description = st.text_area(
-                "Description",
-                placeholder="Describe user impact, affected systems, and any immediate context.",
-                height=110,
-            )
-            raw_log = st.text_area(
-                "Raw Log",
-                value=DEFAULT_LOG,
-                height=260,
-            )
-            severity = st.selectbox("Severity", options=SEVERITY_OPTIONS, index=2)
-            submitted = st.form_submit_button(
-                "Investigate Incident",
-                type="primary",
-                use_container_width=True,
-            )
+            submitted = st.form_submit_button("Investigate", type="primary")
 
         if submitted:
             if not title.strip() or not raw_log.strip():
-                st.session_state["error_message"] = "Title and Raw Log are required."
+                st.session_state["error"] = "Title and raw log are required."
             else:
                 try:
                     submit_incident(title.strip(), description.strip(), raw_log.strip(), severity)
                 except FixOpsApiError as exc:
-                    st.session_state["error_message"] = str(exc)
+                    st.session_state["error"] = str(exc)
 
-        if st.session_state.get("error_message"):
-            st.error(st.session_state["error_message"])
-
-
-def render_result_metrics(incident: dict[str, Any], investigation: dict[str, Any], report: dict[str, Any]) -> None:
-    st.markdown(
-        f"""
-        <div class="metric-strip">
-            <div class="metric-tile">
-                <div class="metric-label">Severity</div>
-                <div class="metric-value">{incident.get("severity", "n/a")}</div>
-            </div>
-            <div class="metric-tile">
-                <div class="metric-label">Incident Status</div>
-                <div class="metric-value">{incident.get("status", "n/a")}</div>
-            </div>
-            <div class="metric-tile">
-                <div class="metric-label">Investigation Status</div>
-                <div class="metric-value">{investigation.get("status", "n/a")}</div>
-            </div>
-            <div class="metric-tile">
-                <div class="metric-label">Report Version</div>
-                <div class="metric-value">{report.get("format_version", "1.0")}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_reasoning_trace(
-    incident: dict[str, Any],
-    investigation: dict[str, Any],
-    report: dict[str, Any],
-) -> None:
-    trace = build_reasoning_trace(incident, investigation, report)
-    dot_colors = {
-        "completed": "#15803d",
-        "retried": "#d97706",
-        "skipped": "#94a3b8",
-    }
-
-    st.markdown("#### Agent Reasoning Trace")
-    st.markdown(
-        "<div class='reasoning-timeline'>"
-        + "".join(
-            (
-                "<div class='reasoning-item'>"
-                f"<span class='reasoning-dot' style='background:{dot_colors[item['status']]}'></span>"
-                f"<span>{item['label']} - {item['status'].capitalize()}</span>"
-                "</div>"
-            )
-            for item in trace["timeline"]
-        )
-        + "</div>",
-        unsafe_allow_html=True,
-    )
-
-    badges: list[str] = []
-    if trace["root_cause_retried"]:
-        badges.append("Root cause retried")
-    if trace["remediation_retried"]:
-        badges.append("Remediation retried")
-
-    if badges:
-        if hasattr(st, "badge"):
-            badge_columns = st.columns(len(badges))
-            for column, badge in zip(badge_columns, badges, strict=False):
-                with column:
-                    st.badge(badge)
-        else:
-            st.markdown(
-                "<div class='reasoning-badges'>"
-                + "".join(f"<span class='reasoning-badge'>{badge}</span>" for badge in badges)
-                + "</div>",
-                unsafe_allow_html=True,
-            )
-
-    with st.expander("How the agent reasoned"):
-        for explanation in trace["explanations"]:
-            st.markdown(f"- {explanation}")
+        if st.session_state.get("error"):
+            st.error(st.session_state["error"])
 
 
 def render_results_panel() -> None:
-    with st.container(border=True):
-        st.subheader("Investigation Results")
+    report = st.session_state.get("report")
+    incident = st.session_state.get("incident")
+    investigation = st.session_state.get("investigation")
 
-        report = st.session_state.get("report")
-        incident = st.session_state.get("incident")
-        investigation = st.session_state.get("investigation")
+    with st.container(border=True):
+        st.subheader("Investigation report")
 
         if not report or not incident or not investigation:
-            st.info("Submit an incident to generate a complete SRE investigation report.")
+            st.info("Submit an incident to generate a report.")
             return
 
-        render_result_metrics(incident, investigation, report)
+        st.markdown(f"**Incident:** {incident.get('title')}")
+        st.markdown(f"**Severity:** `{incident.get('severity')}`")
+        st.markdown(f"**Status:** `{incident.get('status')}`")
+        st.markdown(f"**Confidence:** `{report.get('confidence_score', 'n/a')}`")
 
-        st.markdown("#### Executive Summary")
+        st.markdown("### Executive summary")
         st.write(report.get("executive_summary", "Not available."))
 
-        render_reasoning_trace(incident, investigation, report)
-
-        st.markdown("#### Root Cause Analysis")
+        st.markdown("### Root cause")
         st.write(report.get("root_cause_section", "Not available."))
 
-        st.markdown("#### Supporting Evidence")
-        evidence_items = report.get("evidence_refs", [])
-        for index, item in enumerate(evidence_items, start=1):
-            with st.expander(f"Evidence {index}", expanded=index == 1):
-                st.json(item)
+        st.markdown("### Evidence")
+        for index, item in enumerate(report.get("evidence_refs", []), start=1):
+            with st.expander(
+                f"Evidence {index}: {item.get('source_type', 'unknown')}", expanded=index == 1
+            ):
+                st.markdown(f"**Source:** `{item.get('source_ref')}`")
+                st.write(item.get("content", "No content"))
 
-        st.markdown("#### Remediation Plan")
-        remediation_steps = report.get("remediation_steps", [])
-        if remediation_steps:
-            for index, step in enumerate(remediation_steps, start=1):
-                st.markdown(f"**{step.get('order', index)}. {step.get('action', 'Unspecified action')}**")
-                if step.get("rationale"):
-                    st.caption(step["rationale"])
-                if step.get("command_hint"):
-                    st.code(step["command_hint"], language="bash")
-        else:
-            st.write("No remediation plan available.")
+        st.markdown("### Remediation plan")
+        for step in report.get("remediation_steps", []):
+            risk = step.get("risk_level", "LOW")
+            color = {"LOW": "green", "MEDIUM": "orange", "HIGH": "red"}.get(risk, "gray")
+            st.markdown(f"**{step.get('order')}.** {step.get('action')}")
+            st.markdown(f":{color}[Risk: `{risk}`]")
+            if step.get("rationale"):
+                st.caption(step["rationale"])
+            if step.get("command_hint"):
+                st.code(step["command_hint"], language="bash")
 
-        st.markdown("#### Final Report")
-        st.markdown(build_report_markdown(report))
-
-        with st.expander("Report Metadata"):
-            st.json(
-                {
-                    "incident_id": report.get("incident_id"),
-                    "investigation_id": report.get("investigation_id"),
-                    "report_id": report.get("id"),
-                    "generated_at": report.get("generated_at"),
-                }
-            )
+        if investigation.get("root_cause_retried"):
+            st.caption("Root cause analysis was retried with expanded context.")
+        if investigation.get("remediation_retried"):
+            st.caption("Remediation planning was retried.")
 
 
 def main() -> None:
-    initialize_state()
-    inject_styles()
+    init_state()
     render_header()
-    render_workflow()
 
-    left_column, right_column = st.columns([1, 1.35], gap="large")
-
-    with left_column:
-        render_submission_panel()
-
-    with right_column:
+    left, right = st.columns([1, 1.5])
+    with left:
+        render_input_panel()
+    with right:
         render_results_panel()
 
 

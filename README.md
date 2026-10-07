@@ -1,258 +1,116 @@
-# FixOps IQ
+# FixOps
 
-> **Microsoft Agents League 2026 — Reasoning Agents track**
+A CLI-first AI SRE agent that turns logs into structured incident reports. It analyzes signals, retrieves operational knowledge from your runbooks, and produces a root cause, evidence, and ranked remediation plan.
 
-FixOps IQ is an AI-powered SRE reasoning agent that investigates incidents end-to-end. Submit an error log, get back a structured root cause analysis, supporting evidence, and a ranked remediation plan — automatically.
+## Quick start
 
----
+```bash
+pip install ".[local]"
 
-## Microsoft IQ Integration — Foundry IQ
+# Index the built-in runbooks, playbooks, and postmortems
+fixops ingest
 
-FixOps IQ integrates **Azure AI Foundry** (Foundry IQ) for semantic knowledge retrieval.
+# Analyze a log file
+cat sample.log | fixops investigate --title "Payments timeout"
+# or
+fixops investigate --title "Payments timeout" sample.log
+```
 
-| Component | Provider |
-|---|---|
-| Semantic embeddings | Azure AI Foundry — `text-embedding-3-large` |
-| Structured reasoning | Ollama (local) or Azure OpenAI |
-| Evaluation / demo mode | `AI_PROVIDER=mock` — zero credentials needed |
-
-The knowledge retrieval step embeds incident signals using `text-embedding-3-large` via the Azure AI Foundry endpoint, then performs cosine similarity search across runbooks, playbooks, and postmortems stored in PostgreSQL with `pgvector`. This is the core intelligence layer that grounds the agent's root cause reasoning in real operational knowledge.
-
----
+No database, no cloud credentials, and no Docker are required for the default `local` provider.
 
 ## What it does
 
 ```
-Incident submitted
-       ↓
-Log Analysis          — extracts error type, affected service, anomaly signals
-       ↓
-Knowledge Retrieval   — Azure AI Foundry embeddings search runbooks + postmortems
-       ↓
-Root Cause Analysis   — LLM reasoning with confidence score; retries with expanded context if < 0.75
-       ↓
-Remediation Planning  — ranked steps with kubectl commands; retries if fewer than 2 steps generated
-       ↓
-Report Generation     — structured report with executive summary, evidence, timeline
+Log input
+    ↓
+Log Analysis          → error type, affected service, severity
+    ↓
+Knowledge Retrieval   → keyword search over runbooks, playbooks, postmortems
+    ↓
+Root Cause Analysis   → primary cause, confidence, validated citations
+    ↓
+Remediation Planning  → ranked steps with risk labels and command hints
+    ↓
+Report Generation     → markdown report with timeline and evidence
 ```
 
-The agent makes real decisions at runtime:
-- Severity HIGH/CRITICAL → fetches `top_k=8` knowledge chunks instead of 3
-- Confidence score below threshold → automatically retries root cause with expanded context
-- Thin remediation plan → automatically retries planning step
+The incident is marked `ANALYZED`, not resolved. You resolve it manually when the remediation is complete.
 
----
+## Supported LLM providers
 
-## Demo
-
-The full demo runs in mock mode — no API keys or database needed.
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-
-$env:AI_PROVIDER="mock"
-python scripts/demo_run.py
-```
-
-To run the full UI demo:
-
-```powershell
-# Terminal 1 — backend
-$env:AI_PROVIDER="mock"
-python -m uvicorn main:app --reload
-
-# Terminal 2 — Streamlit UI
-$env:AI_PROVIDER="mock"
-$env:FIXOPS_API_URL="http://127.0.0.1:8000"
-streamlit run ui/app.py
-```
-
-Open `http://localhost:8501` and submit this incident to see the full pipeline:
-
-**Title:** `Payments checkout spike causing transaction timeouts`
-
-**Raw Log:**
-```
-2026-06-11T09:14:03Z INFO payments-api checkout latency p95 crossed 4200ms region=ap-south-1
-2026-06-11T09:16:18Z ERROR payments-api com.zaxxer.hikari.pool.HikariPool Connection is not available, request timed out after 30000ms
-2026-06-11T09:16:21Z ERROR payments-api org.postgresql.util.PSQLException FATAL: sorry, too many clients already SQLSTATE 53300
-2026-06-11T09:18:07Z WARN payments-api retry storm detected for authorize-payment requests trace=8d0c1
-2026-06-11T09:20:11Z WARN payments-api readiness probe failed while inflight requests remained above threshold
-```
-
-**Severity:** `HIGH`
-
----
-
-## Architecture
-
-### Active backend
-
-- `main.py` — FastAPI entrypoint, routes, lifecycle, exception handling
-- `app/config.py` — environment-driven settings with split LLM/embedding provider support
-- `app/agent/orchestrator.py` — multi-step agent with confidence-gated retry logic
-- `app/agent/steps/` — five typed pipeline steps (log analysis → knowledge retrieval → root cause → remediation → report)
-- `app/services/ai.py` — provider-agnostic LLM and embedding interfaces (Azure OpenAI, Azure Foundry, Ollama, Mock)
-- `app/services/db_knowledge_service.py` — pgvector cosine similarity search via Azure AI Foundry embeddings
-- `app/db/` — async SQLAlchemy engine and session management
-- `app/models/` — PostgreSQL ORM models for incidents, investigations, reports, knowledge chunks
-- `ui/` — Streamlit client
-
-### Knowledge base
-
-`knowledge_base/` contains runbooks, playbooks, and postmortems in markdown. The `scripts/ingest_knowledge.py` script chunks and embeds them into PostgreSQL via Azure AI Foundry. The agent retrieves the most relevant chunks at investigation time using vector similarity.
-
-### Folder structure
-
-```
-FixOps/
-├── app/
-│   ├── agent/          — orchestrator + 5 pipeline steps
-│   ├── api/            — FastAPI dependency injection
-│   ├── core/           — constants, logging
-│   ├── db/             — async SQLAlchemy session
-│   ├── models/         — ORM models
-│   ├── schemas/        — Pydantic request/response schemas
-│   └── services/       — AI providers, knowledge service, incident/report services
-├── knowledge_base/
-│   ├── runbooks/
-│   ├── playbooks/
-│   └── postmortems/
-├── scripts/
-│   ├── demo_run.py     — offline demo, no credentials needed
-│   └── ingest_knowledge.py
-├── ui/                 — Streamlit client
-├── main.py
-└── requirements.txt
-```
-
----
-
-## Full setup (with real providers)
-
-### Prerequisites
-
-- Python 3.10+
-- PostgreSQL 15+ with `pgvector` (or use the Docker command below)
-- Ollama installed with `qwen3:8b` pulled
-- Azure AI Foundry endpoint with `text-embedding-3-large` deployed
-
-### Install
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-### PostgreSQL with pgvector
-
-```powershell
-docker run --name fixops-postgres `
-  -e POSTGRES_USER=user `
-  -e POSTGRES_PASSWORD=pass `
-  -e POSTGRES_DB=fixops_iq `
-  -p 5432:5432 `
-  -d pgvector/pgvector:pg15
-```
-
-### Ollama
-
-```powershell
-ollama pull qwen3:8b
-```
-
-### Environment
-
-Create `.env` from `.env.example`:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Hybrid setup (Ollama for LLM, Azure AI Foundry for embeddings):
-
-```env
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fixops_iq
-DB_ECHO=false
-APP_ENV=development
-LOG_LEVEL=INFO
-
-LLM_PROVIDER=ollama
-CHAT_MODEL=qwen3:8b
-CHAT_DEPLOYMENT=qwen3:8b
-OLLAMA_MODEL=qwen3:8b
-
-EMBEDDING_PROVIDER=azure_openai
-ENDPOINT=https://<your-resource>.openai.azure.com
-API_KEY=<your-key>
-API_VERSION=2024-02-01
-EMBEDDING_MODEL=text-embedding-3-large
-EMBEDDING_DEPLOYMENT=text-embedding-3-large
-
-FIXOPS_API_URL=http://127.0.0.1:8000
-```
-
-Mock setup (no credentials):
-
-```env
-AI_PROVIDER=mock
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/fixops_iq
-```
-
-### Ingest knowledge base
-
-```powershell
-python scripts/ingest_knowledge.py
-```
-
-### Run
-
-```powershell
-# Backend
-python -m uvicorn main:app --reload
-
-# Frontend (separate terminal)
-$env:FIXOPS_API_URL="http://127.0.0.1:8000"
-streamlit run ui/app.py
-```
-
----
-
-## API
-
-| Method | Path | Description |
+| Provider | How to enable | Notes |
 |---|---|---|
-| `POST` | `/incidents` | Create an incident record |
-| `POST` | `/investigate` | Queue the agent pipeline and return `202` |
-| `GET` | `/investigations/{id}` | Poll status and current step |
-| `GET` | `/investigations/{id}/steps` | Read step audit records |
-| `GET` | `/investigations/{id}/report` | Fetch a completed report |
-| `GET` | `/reports/{id}` | Fetch the structured investigation report |
-| `GET` | `/healthz` | Database health check |
+| `local` (default) | `LLM_PROVIDER=local` | Zero credentials; uses the markdown knowledge base and rule-based matching. |
+| `ollama` | `LLM_PROVIDER=ollama` `LLM_MODEL=qwen3:8b` | Local open-source models. |
+| `openai` | `LLM_PROVIDER=openai` `API_KEY=...` `LLM_MODEL=gpt-4o-mini` | Any OpenAI-compatible endpoint. |
+| `azure_openai` | `LLM_PROVIDER=azure_openai` `ENDPOINT=...` `API_KEY=...` `API_VERSION=...` | Azure OpenAI or Azure AI Foundry. |
 
-API docs available at `http://127.0.0.1:8000/docs` when running.
+Set the provider with environment variables or CLI flags:
 
----
+```bash
+fixops --llm-provider ollama --llm-model qwen3:8b investigate sample.log
+```
 
-## Agentic reasoning features
+## Optional server mode
 
-- **Confidence-gated retry** — if root cause confidence score is below 0.75, the agent re-runs knowledge retrieval with expanded context and retries root cause analysis
-- **Severity-adaptive retrieval** — HIGH/CRITICAL incidents fetch 8 knowledge chunks; MEDIUM/LOW fetch 3
-- **Remediation retry** — if fewer than 2 remediation steps are generated, the planning step runs again automatically
-- **Typed step outputs** — each pipeline step produces a typed dataclass result; the orchestrator passes structured state between steps
-- **Mock mode** — fully deterministic pipeline with no external dependencies, suitable for evaluation and CI
+Run FixOps as a small FastAPI server for team sharing:
 
----
+```bash
+pip install ".[server,ui,local]"
+fixops server
+```
 
-## Observability
+Then start the Streamlit UI:
 
-- All logs emitted as structured JSON to stdout
-- `GET /healthz` verifies database reachability
-- Unhandled exceptions are logged server-side and return sanitized 500 responses
-- Investigation status tracked per step in PostgreSQL (`QUEUED → RUNNING → COMPLETED / FAILED`)
-- Structured evidence, remediation steps, retry flags, and confidence are persisted and exposed
-- Set `API_AUTH_TOKEN` to require `X-API-Key` on write endpoints
-- Run `alembic upgrade head` for deployed schema changes; `create_all` is only a local fallback
+```bash
+streamlit run ui/app.py
+```
+
+Server endpoints require `FIXOPS_API_KEY` as the `X-API-Key` header when set.
+
+## CLI commands
+
+```bash
+fixops ingest                           # Index the knowledge base
+fixops investigate sample.log           # Analyze a log file
+fixops history                          # List past incidents
+fixops show <incident-id>               # Show the latest report for an incident
+fixops resolve <incident-id>            # Mark an incident as resolved
+fixops server                           # Start the optional API server
+```
+
+## Safety
+
+- Logs are redacted for secrets, API keys, emails, and IP addresses before being sent to any cloud LLM.
+- Remediation command hints are displayed with a risk label and are never executed automatically.
+- The server uses constant-time API key comparison and CORS origin restrictions.
+
+## Project layout
+
+```
+fixops/
+├── cli.py            # CLI entrypoint
+├── config.py         # Settings
+├── db.py             # SQLite models
+├── knowledge/        # Markdown loader and keyword retriever
+├── llm/              # LLM provider implementations
+├── pipeline/         # Five-step agent orchestrator
+├── repository.py     # Database operations
+├── security/         # Log redaction
+└── server/           # Optional FastAPI server
+knowledge_base/       # Runbooks, playbooks, postmortems
+ui/                   # Optional Streamlit client
+```
+
+## Development
+
+```bash
+pip install ".[dev,server,ui,local]"
+ruff check .
+mypy fixops/ ui/
+pytest -q
+```
+
+## License
+
+MIT
