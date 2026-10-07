@@ -50,9 +50,7 @@ ui = [
 ollama = [
     "ollama>=0.1.0",
 ]
-local = [
-    "scikit-learn>=1.3",
-]
+local = []
 dev = [
     "pytest>=7.4",
     "ruff>=0.1.0",

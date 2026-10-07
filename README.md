@@ -5,7 +5,7 @@ A CLI-first AI SRE agent that turns logs into structured incident reports. It an
 ## Quick start
 
 ```bash
-pip install ".[local]"
+pip install "."
 
 # Index the built-in runbooks, playbooks, and postmortems
 fixops ingest
@@ -56,7 +56,7 @@ fixops --llm-provider ollama --llm-model qwen3:8b investigate sample.log
 Run FixOps as a small FastAPI server for team sharing:
 
 ```bash
-pip install ".[server,ui,local]"
+pip install ".[server,ui]"
 fixops server
 ```
 
@@ -105,7 +105,7 @@ ui/                   # Optional Streamlit client
 ## Development
 
 ```bash
-pip install ".[dev,server,ui,local]"
+pip install ".[dev,server,ui]"
 ruff check .
 mypy fixops/ ui/
 pytest -q
