@@ -10,6 +10,7 @@ __pycache__/
 htmlcov/
 .pytest_cache/
 .venv/
+.venv*/
 venv/
 
 .pytest_cache/
