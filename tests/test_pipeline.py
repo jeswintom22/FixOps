@@ -83,5 +83,11 @@ def test_pipeline_captures_step_history(retriever: KeywordRetriever) -> None:
     log = "2026-01-01T00:00:00Z ERROR app timeout"
     state = asyncio.run(_run(log, retriever))
     step_names = {s.step_name for s in state.step_history}
-    assert step_names == {"LOG_ANALYSIS", "KNOWLEDGE_RETRIEVAL", "ROOT_CAUSE_ANALYSIS", "REMEDIATION", "REPORT_GENERATION"}
+    assert step_names == {
+        "LOG_ANALYSIS",
+        "KNOWLEDGE_RETRIEVAL",
+        "ROOT_CAUSE_ANALYSIS",
+        "REMEDIATION",
+        "REPORT_GENERATION",
+    }
     assert all(s.status.value == "COMPLETED" for s in state.step_history)

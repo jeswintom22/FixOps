@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,24 +56,34 @@ async def test_list_incidents(db_session: AsyncSession) -> None:
     assert len(incidents) == 2
 
 
+async def _make_incident(session: AsyncSession) -> Any:
+    return await create_incident(
+        session, title="T", raw_log="err", severity=IncidentSeverity.MEDIUM
+    )
+
+
 async def test_investigation_lifecycle(db_session: AsyncSession) -> None:
-    incident = await create_incident(db_session, title="T", raw_log="err", severity=IncidentSeverity.MEDIUM)
+    incident = await _make_incident(db_session)
     investigation = await create_investigation(db_session, incident.id)
-    completed = await mark_investigation_completed(db_session, investigation.id, confidence_score=0.85)
+    completed = await mark_investigation_completed(
+        db_session, investigation.id, confidence_score=0.85
+    )
     assert completed.status == InvestigationStatus.COMPLETED
     assert completed.confidence_score == pytest.approx(0.85)
 
 
 async def test_resolve_incident(db_session: AsyncSession) -> None:
-    incident = await create_incident(db_session, title="T", raw_log="err", severity=IncidentSeverity.MEDIUM)
-    resolved = await update_incident_status(db_session, incident.id, IncidentStatus.RESOLVED)
+    incident = await _make_incident(db_session)
+    resolved = await update_incident_status(
+        db_session, incident.id, IncidentStatus.RESOLVED
+    )
     assert resolved.status == IncidentStatus.RESOLVED
 
 
 async def test_create_report(db_session: AsyncSession) -> None:
     from datetime import datetime, timezone
 
-    incident = await create_incident(db_session, title="T", raw_log="err", severity=IncidentSeverity.MEDIUM)
+    incident = await _make_incident(db_session)
     investigation = await create_investigation(db_session, incident.id)
     report_data = {
         "investigation_id": investigation.id,
@@ -92,7 +103,7 @@ async def test_create_report(db_session: AsyncSession) -> None:
         "format_version": "1.0",
         "generated_at": datetime.now(timezone.utc),
     }
-    report = await create_or_update_report(db_session, report_data)
+    await create_or_update_report(db_session, report_data)
     fetched = await get_report_for_investigation(db_session, investigation.id)
     assert fetched is not None
     assert fetched.title == "Report"
