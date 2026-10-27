@@ -86,8 +86,8 @@ def render_input_panel() -> None:
             submitted = st.form_submit_button("Investigate", type="primary")
 
         if submitted:
-            if not title.strip() or not raw_log.strip():
-                st.session_state["error"] = "Title and raw log are required."
+            if not title.strip() or not raw_log.strip() or severity is None:
+                st.session_state["error"] = "Title, raw log and severity are required."
             else:
                 try:
                     submit_incident(title.strip(), description.strip(), raw_log.strip(), severity)
