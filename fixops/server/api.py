@@ -9,7 +9,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -54,6 +63,7 @@ from fixops.repository import (
     mark_investigation_running,
     update_incident_status,
 )
+from fixops.security.network import is_loopback_host
 from fixops.security.redaction import redact
 
 logger = logging.getLogger(__name__)
@@ -167,10 +177,19 @@ app.add_middleware(
 )
 
 
-async def require_auth(x_api_key: str | None = Header(default=None)) -> None:
+MAX_INCIDENT_LIST_LIMIT = 200
+
+
+async def require_auth(request: Request, x_api_key: str | None = Header(default=None)) -> None:
     configured = get_settings().api_auth_token
     if not configured:
-        return
+        client_host = request.client.host if request.client else None
+        if is_loopback_host(client_host):
+            return
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key required: set FIXOPS_API_KEY to allow non-loopback clients.",
+        )
     if x_api_key is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing API key.")
     if not secrets.compare_digest(x_api_key, configured):
@@ -350,7 +369,7 @@ async def api_investigate(
 async def api_list_incidents(
     session: AsyncSession = Depends(get_db),
     _: None = Depends(require_auth),
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=MAX_INCIDENT_LIST_LIMIT),
 ) -> Sequence[Incident]:
     return await list_incidents(session, limit=limit)
 
