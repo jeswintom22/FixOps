@@ -46,6 +46,7 @@ from fixops.repository import (
     save_knowledge_chunks,
     update_incident_status,
 )
+from fixops.security.network import is_loopback_host
 from fixops.security.redaction import redact
 
 console = Console()
@@ -464,12 +465,18 @@ def server(ctx: click.Context, host: str | None, port: int | None) -> None:
         raise click.ClickException(str(exc)) from exc
 
     settings: Settings = ctx.obj["settings"]
+    bind_host = host or settings.server_host
+    if not settings.api_auth_token and not is_loopback_host(bind_host):
+        raise click.ClickException(
+            f"Refusing to bind to non-loopback host {bind_host!r} without an API key. "
+            "Set FIXOPS_API_KEY (or API_AUTH_TOKEN), or bind to 127.0.0.1."
+        )
     # Import here to avoid hard dependency on FastAPI for CLI-only installs.
     from fixops.server.api import app
 
     uvicorn.run(
         app,
-        host=host or settings.server_host,
+        host=bind_host,
         port=port or settings.server_port,
     )
 

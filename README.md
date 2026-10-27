@@ -66,7 +66,7 @@ Then start the Streamlit UI:
 streamlit run ui/app.py
 ```
 
-Server endpoints require `FIXOPS_API_KEY` as the `X-API-Key` header when set.
+Server endpoints require `FIXOPS_API_KEY` as the `X-API-Key` header when set. Without a key, only loopback clients are allowed and `fixops server` refuses to bind to a non-loopback host.
 
 ## CLI commands
 

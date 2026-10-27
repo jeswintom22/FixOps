@@ -47,7 +47,7 @@ fixops server
 streamlit run ui/app.py
 ```
 
-Set `FIXOPS_API_KEY` to require authentication on the server and UI.
+Set `FIXOPS_API_KEY` to require authentication on the server and UI. Without a key, the server only accepts loopback clients and refuses to start on a non-loopback `--host`.
 
 ## Run with Docker
 
