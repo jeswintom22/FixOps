@@ -274,17 +274,26 @@ async def _run_investigation_job(investigation_id: uuid.UUID) -> None:
             ]
         )
 
+        title = incident.title
+        description = incident.description
         raw_log = incident.raw_log
+        metadata = dict(incident.metadata_)
         if settings.redaction_enabled:
+            title = redact(title)
+            description = redact(description) if description else description
             raw_log = redact(raw_log)
+            metadata = {
+                key: redact(value) if isinstance(value, str) else value
+                for key, value in metadata.items()
+            }
 
         state = AgentState(
             investigation_id=investigation.id,
             incident_id=incident.id,
-            incident_title=incident.title,
+            incident_title=title,
             raw_log=raw_log,
-            incident_description=incident.description,
-            incident_metadata=dict(incident.metadata_),
+            incident_description=description,
+            incident_metadata=metadata,
             service_name=incident.service_name,
             source=incident.source,
             environment=incident.environment,
@@ -324,9 +333,15 @@ async def api_create_incident(
     session: AsyncSession = Depends(get_db),
     _: None = Depends(require_auth),
 ) -> Incident:
+    title = payload.title
+    description = payload.description
     raw_log = payload.raw_log
+    metadata = payload.metadata
     if get_settings().redaction_enabled:
+        title = redact(title)
+        description = redact(description) if description else description
         raw_log = redact(raw_log)
+        metadata = {key: redact(value) for key, value in metadata.items()}
     try:
         severity = IncidentSeverity(payload.severity.upper())
     except ValueError as exc:
@@ -335,15 +350,15 @@ async def api_create_incident(
         ) from exc
     return await create_incident(
         session,
-        title=payload.title,
-        description=payload.description,
+        title=title,
+        description=description,
         raw_log=raw_log,
         severity=severity,
         source=payload.source,
         service_name=payload.service_name,
         environment=payload.environment,
         tags=payload.tags,
-        metadata=payload.metadata,
+        metadata=metadata,
     )
 
 

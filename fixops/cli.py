@@ -229,10 +229,12 @@ def investigate(
         console.print("[red]Error: empty log input.[/red]")
         sys.exit(1)
 
-    title = title or _infer_title(raw_log)
-
     if not no_redaction:
         raw_log = redact(raw_log)
+        title = redact(title) if title else None
+        description = redact(description) if description else description
+
+    title = title or _infer_title(raw_log)
 
     asyncio.run(
         _run_investigation(
